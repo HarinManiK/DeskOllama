@@ -991,28 +991,9 @@ setInterval(()=>{ if(!document.hidden && !loadingName && !ejectingName) refreshP
 els.input.focus();
 
 const TIPS = [
-  "Press Enter to send, Shift+Enter for new line",
-  "Use the branch switcher (‹ ›) to navigate conversation branches",
-  "Revert any message and create a new path from there",
-  "Edit context directly — remove or rewrite model responses before sending",
-  "Compact long conversations with one click to save tokens",
-  "Load models manually to free VRAM when not in use",
+  "Press Shift+Enter for a new line",
   "Enable thinking mode for models that support chain-of-thought",
-  "Adjust temperature for more creative or focused outputs",
-  "Use JSON format for structured responses from the model",
-  "Set keep-alive time to control how long models stay loaded",
-  "Branch conversations to explore different answers side-by-side",
-  "The context ring shows how much of your window is used",
-  "Remove unnecessary messages to extend conversation length",
-  "Inject examples into context to guide the model's style",
-  "Use stop sequences to control where generation ends",
-  "GPU layers (num_gpu) speeds up inference significantly",
-  "Lower temperature for code, higher for creative writing",
-  "Top P and top K work together for balanced sampling",
-  "Mirostat mode adapts perplexity automatically during generation",
-  "Seed values make responses reproducible for debugging",
-  "The sidebar shows all your conversations — click to switch",
-  "Set a system prompt in settings to give the model instructions every chat"
+  "Adjust temperature for more creative or focused outputs"
 ];
 
 function showRandomTip() {
