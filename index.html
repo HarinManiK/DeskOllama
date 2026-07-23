@@ -260,7 +260,7 @@
 
 <div id="overlay"></div>
 <aside id="settings">
-  <div class="set-head"><h2>Settings</h2><button class="btn" id="resetSettings" style="margin-left:12px;padding:6px 10px;font-size:12px">Reset to Ollama defaults</button><span class="grow"></span><button class="tb-btn" id="closeSettings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="set-head"><h2>Settings</h2><button class="btn" id="resetSettings" style="margin-left:12px;padding:6px 10px;font-size:12px">Reset to Ollama defaults</button><button class="btn" id="resetDefaults" style="margin-left:8px;padding:6px 10px;font-size:12px">Reset to defaults</button><span class="grow"></span><button class="tb-btn" id="closeSettings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
   <div class="set-body">
     <div class="set-group">
       <p class="gh">Connection</p>
@@ -343,7 +343,7 @@ function defaultParams(){ const p={}; for(const it of SPEC_ITEMS) p[it.k] = (it.
 
 /* ============ persistence (v3, migrates conversations from v2) ============ */
 const KEY = "localharness.v3";
-const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:"", keepAlive:"300", format:"", model:"" };
+const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:"", keepAlive:"-1", format:"", model:"" };
 function durToSeconds(s){ const m=/^(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)?$/.exec(String(s).trim()); if(!m) return null; const mult={ns:1e-9,us:1e-6,"µs":1e-6,ms:1e-3,s:1,m:60,h:3600}[m[2]||"s"]; return Math.round(parseFloat(m[1])*mult); }
 function load(){
   try{ const v3=JSON.parse(localStorage.getItem(KEY));
@@ -892,10 +892,45 @@ async function closeSettings(){
   if(choice==="reload") await loadModel(els.model.value);   // apply load-time options immediately
 }
 function resetForm(){
-  $("#s_system").value=""; $("#s_keepalive").value="300"; $("#s_format").value="";
+  $("#s_system").value=""; $("#s_keepalive").value="-1"; $("#s_format").value="";
   buildSettingsForm(defaultParams());
   $("#setErr").style.display="none";
 }
+
+function resetToDefaults(){
+  // Reset to Ollama defaults except keepAlive and num_predict (max output tokens)
+  const s = state.settings;
+  s.baseUrl = "http://localhost:11434";
+  s.theme = "dark";
+  s.think = true;
+  s.system = "";
+  s.keepAlive = "-1"; // Keep as -1 (forever)
+  s.format = "";
+  s.model = "";
+  const defaults = defaultParams();
+  defaults.num_ctx = 4096;
+  defaults.temperature = 0.8;
+  defaults.top_p = 0.9;
+  defaults.top_k = 40;
+  defaults.min_p = 0.0;
+  defaults.typical_p = 1.0;
+  defaults.repeat_penalty = 1.1;
+  defaults.repeat_last_n = 64;
+  defaults.presence_penalty = 0.0;
+  defaults.frequency_penalty = 0.0;
+  defaults.penalize_newline = true;
+  defaults.num_predict = -1; // Keep as -1
+  defaults.seed = null;
+  defaults.stop = [];
+  defaults.mirostat = 0;
+  defaults.mirostat_tau = 5.0;
+  defaults.mirostat_eta = 0.1;
+  s.params = defaults;
+  save();
+  buildSettingsForm(defaults);
+}
+
+$("#resetDefaults").addEventListener("click", resetToDefaults);
 
 /* ============ context editor ============ */
 let ctxState=null;
