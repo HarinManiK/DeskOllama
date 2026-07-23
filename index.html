@@ -238,7 +238,7 @@
     <span class="capinfo" id="capinfo"></span>
     <span class="grow"></span>
     <button class="think-toggle" id="thinkBtn" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.9 1 1 1.7l.1.5h5l.1-.5c.1-.7.5-1.3 1-1.7A6 6 0 0 0 12 3z"/></svg></button>
-    <button class="tb-btn" id="ctxBtn" data-tip="Show context — view &amp; edit this branch's messages" title="Context"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
+    <button class="tb-btn" id="ctxBtn" data-tip="Show context (view and edit this branch's messages)" title="Context"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
 
     <button class="tb-btn" id="themeBtn" title="Toggle theme"><svg id="themeIcon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg></button>
     <button class="tb-btn" id="settingsBtn" title="Settings"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
@@ -249,7 +249,7 @@
   <div id="scroll"><div class="thread" id="thread"><div class="empty" id="empty">What can I help with?</div></div></div>
 
   <div class="composer-wrap">
-    <div id="composeBar" style="display:none"><span>Reverted — type &amp; send to branch from here.</span><button id="composeCancel">Cancel</button></div>
+    <div id="composeBar" style="display:none"><span>Reverted. Type and send to branch from here.</span><button id="composeCancel">Cancel</button></div>
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
       <button class="send-btn" id="send" title="Send" disabled><svg id="sendIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
@@ -321,7 +321,7 @@ const OPTION_SPEC = [
   { group:"Mirostat (adaptive perplexity)", items:[
     {k:"mirostat",          label:"Mirostat mode",            type:"select", options:[["0","Disabled"],["1","Mirostat 1"],["2","Mirostat 2"]], def:0, tip:"Adaptive sampling that targets a constant perplexity. 0 = off."},
     {k:"mirostat_tau",      label:"Mirostat tau",             type:"float", def:5.0, tip:"Target entropy for Mirostat. Lower = more focused output."},
-    {k:"mirostat_eta",      label:"Mirostat eta",             type:"float", def:0.1, tip:"Mirostat learning rate — how fast it adapts."},
+    {k:"mirostat_eta",      label:"Mirostat eta",             type:"float", def:0.1, tip:"Mirostat learning rate (how fast it adapts)."},
   ]},
   { group:"Runtime & hardware", note:"Advanced. Auto / blank lets Ollama decide.", items:[
     {k:"num_batch",   label:"Batch size (num_batch)",  type:"int", def:null, placeholder:"512", tip:"Prompt-processing batch size. Higher can be faster but uses more memory."},
@@ -337,7 +337,7 @@ const OPTION_SPEC = [
 ];
 const SPEC_ITEMS = OPTION_SPEC.flatMap(g=>g.items);
 const SPEC_BY_KEY = Object.fromEntries(SPEC_ITEMS.map(it=>[it.k,it]));
-// Options that are baked in at model-load time — changing them requires a reload to take effect.
+// Options that are baked in at model-load time. Changing them requires a reload to take effect.
 const LOAD_TIME_KEYS = ["num_ctx","num_batch","num_keep","num_gpu","main_gpu","num_thread","use_mmap","use_mlock","low_vram","numa"];
 function defaultParams(){ const p={}; for(const it of SPEC_ITEMS) p[it.k] = (it.def===undefined?null:it.def); return p; }
 
@@ -555,7 +555,7 @@ async function ejectModel(name){
   ejectingName=name; updateLoadUI();
   try{
     await fetch(base()+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:name, keep_alive:0, stream:false})});
-    // The request returns before VRAM is freed — keep the spinner until /api/ps confirms it's gone.
+    // The request returns before VRAM is freed. Keep the spinner until /api/ps confirms it's gone.
     for(let i=0;i<40;i++){
       const r=await fetch(base()+"/api/ps"); const d=await r.json();
       loadedModels=new Map((d.models||[]).map(m=>[m.name,m]));
@@ -670,7 +670,7 @@ function openConversation(){
 let autostick=true, lastTop=1e9;   // follow the stream only while the user is parked at the bottom
 function scrollBottom(){ els.scroll.scrollTop=els.scroll.scrollHeight; }
 function nearBottom(){ return els.scroll.scrollHeight-els.scroll.scrollTop-els.scroll.clientHeight<80; }
-// wheel/touch fire synchronously on user intent — disable follow the instant they scroll up.
+// wheel/touch fire synchronously on user intent. Disable follow the instant they scroll up.
 els.scroll.addEventListener("wheel",e=>{ if(e.deltaY<0) autostick=false; },{passive:true});
 els.scroll.addEventListener("touchmove",()=>{ if(els.scroll.scrollHeight-els.scroll.scrollTop-els.scroll.clientHeight>=4) autostick=false; },{passive:true});
 // covers scrollbar drag / keys: any upward move detaches; re-attach ONLY at the true bottom (not merely "near").
