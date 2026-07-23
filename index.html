@@ -1017,7 +1017,7 @@ const TIPS = [
 
 function showRandomTip() {
   const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
-  document.getElementById('tipDisplay').textContent = '💡 ' + tip;
+  document.getElementById('tipDisplay').textContent = tip;
 }
 window.addEventListener('DOMContentLoaded', showRandomTip);
 </script>
