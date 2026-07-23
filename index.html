@@ -634,7 +634,7 @@ const ICON_CHECK='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" st
 const ICON_REGEN='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>';
 const ICON_REVERT='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10H9"/></svg>';
 function actBtn(title,icon,fn){ const b=document.createElement("button"); b.title=title; b.innerHTML=icon; b.onclick=fn; return b; }
-function copyBtn(text){ const b=actBtn("Copy",ICON_COPY,()=>{ navigator.clipboard.writeText(text); b.innerHTML=ICON_CHECK; setTimeout(()=>b.innerHTML=ICON_COPY,500); }); return b; }
+function copyBtn(text){ const b=actBtn("Copy",ICON_COPY,()=>{ navigator.clipboard.writeText(text); b.innerHTML=ICON_CHECK; setTimeout(()=>b.innerHTML=ICON_COPY,1200); }); return b; }
 function branchSwitcher(c,node,sibs){
   const idx=sibs.findIndex(s=>s.id===node.id);
   const el=document.createElement("div"); el.className="branchsw";
