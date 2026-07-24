@@ -301,7 +301,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7
 /* ============ full option spec (defaults = Ollama defaults) ============ */
 const OPTION_SPEC = [
   { group:"Context length", items:[
-    {k:"num_ctx",           label:"Context window (num_ctx)", type:"ctx",   def:4096, tip:"How many tokens the model can see at once (prompt + reply). Larger = more memory used."},
+    {k:"num_ctx",           label:"Context window (num_ctx)", type:"ctx",   def:65536, tip:"How many tokens the model can see at once (prompt + reply). Larger = more memory used."},
   ]},
   { group:"Sampling", items:[
     {k:"temperature",       label:"Temperature",              type:"range", min:0, max:2, step:0.05, def:0.8, tip:"Higher = more random and creative; lower = more focused and deterministic."},
@@ -350,7 +350,7 @@ function load(){
     if(v3 && v3.settings){
       v3.settings={...DEFAULT_SETTINGS,...v3.settings};
       v3.settings.params={...defaultParams(),...(v3.settings.params||{})};
-      if(v3.settings.params.num_ctx==null) v3.settings.params.num_ctx=4096;
+      if(v3.settings.params.num_ctx==null) v3.settings.params.num_ctx=65536;
       const ka=v3.settings.keepAlive;                                  // migrate old "5m"/"1h" → seconds
       if(typeof ka==="string" && ka.trim()!=="" && !/^-?\d+$/.test(ka.trim())){ const sec=durToSeconds(ka); v3.settings.keepAlive = sec==null?"300":String(sec); }
       return v3;
@@ -486,7 +486,7 @@ function updateThinkToggle(){
   btn.classList.toggle("on",on);
   btn.dataset.tip = `Thinking mode: ${on?"ON":"OFF"}\nThe model reasons before answering.`;
 }
-function ctxLimit(){ const n=state.settings.params.num_ctx; return (n!=null && n>0)?n:4096; }
+function ctxLimit(){ const n=state.settings.params.num_ctx; return (n!=null && n>0)?n:65536; }
 function updateCtxRing(){
   const ring=$("#ctxRing"); if(!ring) return;
   const path=pathOf(currentConv()); let used=0;
@@ -783,7 +783,7 @@ function fieldHTML(it){
     if(max) presets.push(max);
     const chips=presets.map(p=>`<button type="button" class="chip" data-ctx="${p}">${p===max?"Max · ":""}${p>=1024?(p/1024)+"K":p}</button>`).join("");
     const mtip=(it.tip||"")+(max?` Model max: ${max.toLocaleString()} tokens.`:"");
-    ctrl=`<input type="number" step="256" min="256" id="p_${it.k}" value="${v==null?"":v}" placeholder="4096"><div class="presets">${chips}</div>`;
+    ctrl=`<input type="number" step="256" min="256" id="p_${it.k}" value="${v==null?"":v}" placeholder="65536"><div class="presets">${chips}</div>`;
     return `<div class="field"><label>${it.label}${help(mtip)}</label>${ctrl}</div>`;
   }
   if(it.type==="range"){ const cur=v==null?it.def:v; ctrl=`<div class="rangewrap"><input type="range" id="p_${it.k}" min="${it.min}" max="${it.max}" step="${it.step}" value="${cur}"><span class="val" id="v_${it.k}">${(+cur).toFixed(2)}</span></div>`; }
