@@ -607,7 +607,6 @@ async function refreshPs(){
   }catch(e){ setConn(false,"offline"); }
   updateLoadUI();
 }
-function fmtBytes(b){ if(!b) return ""; const gb=b/1e9; return gb>=1?gb.toFixed(1)+" GB":(b/1e6).toFixed(0)+" MB"; }
 function updateLoadUI(){
   const cur=els.model.value, info=loadedModels.get(cur);
   if(loadingName===cur){
@@ -617,7 +616,7 @@ function updateLoadUI(){
     els.loadChip.innerHTML=`<span class="spin"></span> ejecting…`;
     els.loadBtn.textContent="Ejecting"; els.loadBtn.disabled=true; els.loadBtn.className="loadbtn eject";
   }else if(info){
-    els.loadChip.innerHTML=`<span class="dot ok"></span>loaded · ${fmtBytes(info.size_vram||info.size)}`;
+    els.loadChip.innerHTML=`<span class="dot ok"></span>loaded`;
     els.loadBtn.textContent="Eject"; els.loadBtn.disabled=false; els.loadBtn.className="loadbtn eject";
   }else{
     els.loadChip.innerHTML=`<span class="dot"></span>not loaded`;
