@@ -274,8 +274,8 @@
       <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
       <button class="send-btn" id="send" title="Send" disabled><svg id="sendIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
-    <div class="foot-note" id="tipDisplay"></span>
-    </div>
+    <div class="foot-note" id="tipDisplay"></div>
+  </div>
 </div>
 
 <div id="overlay"></div>
@@ -591,7 +591,7 @@ async function loadModel(name){
     // Must match the chat request's load-time options (num_ctx, num_gpu, ...) or Ollama
     // will unload this instance and reload a different one on the first message.
     const body={model:name, stream:false, options:buildOptions(name)};
-    const ka=parseKeepAlive(state.settings.keepAlive); if(ka.val!==undefined) body.keep_alive=ka.val;
+    const ka=parseKeepAlive(resolveSetting("keepAlive",name)); if(ka.val!==undefined) body.keep_alive=ka.val;
     const r=await fetch(base()+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text()).slice(0,180));
     await r.json();
@@ -756,7 +756,11 @@ function setOverride(model,k,v){
 // Drops a key's per-model overrides everywhere. Returns how many models were affected.
 function purgeKey(k){
   let n=0;
-  for(const mp of Object.values(state.settings.modelParams)){ if(has(mp,k)){ delete mp[k]; n++; } }
+  for(const [name,mp] of Object.entries(state.settings.modelParams)){
+    if(!has(mp,k)) continue;
+    delete mp[k]; n++;
+    if(!Object.keys(mp).length) delete state.settings.modelParams[name];   // don't leave empty bags behind
+  }
   return n;
 }
 function countOverrides(k){
@@ -855,11 +859,12 @@ async function generate(){
   const parentId=c.leafId;   // the assistant reply attaches under the current leaf (last user node)
   const dom=rowNode("assistant"); els.thread.appendChild(dom.row); dom.content.classList.add("cursor"); autostick=true; scrollBottom();
   const msgs=[];
-  if(state.settings.system.trim()) msgs.push({role:"system",content:state.settings.system});
+  const sys=String(resolveSetting("system",c.model)||"");
+  if(sys.trim()) msgs.push({role:"system",content:sys});
   for(const nd of pathOf(c)) msgs.push({role:nd.role,content:nd.content});
   const payload={model:c.model, stream:true, messages:msgs, options:buildOptions(c.model)};
   if(modelCaps(c.model).includes("thinking")) payload.think=!!state.settings.think;  // avoid 400 on non-thinking models
-  const ka=parseKeepAlive(state.settings.keepAlive); if(ka.val!==undefined) payload.keep_alive=ka.val;
+  const ka=parseKeepAlive(resolveSetting("keepAlive",c.model)); if(ka.val!==undefined) payload.keep_alive=ka.val;
   const fmt=resolveSetting("format",c.model); if(fmt) payload.format=fmt;
 
   const assistant={content:"",thinking:"",meta:""};
@@ -975,13 +980,20 @@ function buildSettingsForm(src){
   if(ctxInput){ ctxInput.addEventListener("input",()=>{ markChips(); markWarn(); }); markChips(); markWarn(); }
 }
 function openSettings(){
+  fillSettingsForm();
+  els.settings.classList.add("open"); els.overlay.classList.add("open");
+}
+// Repopulates every field from saved state for the selected model. Used when opening the
+// panel, when the model changes under it, and to throw away edits on Cancel.
+function fillSettingsForm(){
   const s=state.settings, model=els.model.value;
-  $("#s_base").value=s.baseUrl; $("#s_system").value=s.system;
-  $("#s_keepalive").value=s.keepAlive;
+  $("#s_base").value=s.baseUrl;
+  $("#s_system").value=resolveSetting("system",model)||"";
+  $("#s_keepalive").value=resolveSetting("keepAlive",model)||"";
   $("#s_format").value=resolveSetting("format",model)||"";
   $("#setModel").textContent=model||"";
   buildSettingsForm(resolveParams(model));
-  els.settings.classList.add("open"); els.overlay.classList.add("open");
+  $("#setErr").style.display="none";
 }
 function readParams(){
   const p={};
@@ -1093,14 +1105,10 @@ function reviewDialog(rows,model){
       box.appendChild(p);
     }
   };
-  // "Keep editing" is the dismiss action (Escape / backdrop), so nothing is lost by accident.
-  // "Discard" is the only way out of the panel without saving, since every close path
-  // (the X, the overlay and Escape) routes through this dialog once something has changed.
-  const keep={label:"Keep editing",value:"cancel",cancel:true};
-  const discard={label:"Discard changes",value:"discard"};
+  const cancel={label:"Cancel",value:"cancel",cancel:true};
   const buttons = needsReloadChoice(rows)
-    ? [ discard, keep, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
-    : [ discard, keep, {label:"Save",value:"save",primary:true} ];
+    ? [ cancel, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
+    : [ cancel, {label:"Save",value:"save",primary:true} ];
   return dialog(`Review changes (${model||"no model"})`, "", buttons, {wide:true, build});
 }
 // "Save & reload now" reloads the selected model, so the choice is only worth offering when
@@ -1146,9 +1154,10 @@ async function closeSettings(){
   const rows=buildRows(f,model);
   if(!rows.some(r=>r.changed)){ doClose(); return; }
   const choice=await reviewDialog(rows,model);
-  if(choice==="cancel"||choice==null) return;                 // stay in the panel, edits intact
-  // Discard needs no cleanup: nothing was committed, and reopening rebuilds the form from state.
-  if(choice==="discard"){ doClose(); return; }
+  // Cancel drops the edits but leaves the panel open, so the form goes back to saved state.
+  // Nothing was committed, so there is nothing else to undo. With no pending changes left,
+  // the next close goes straight through.
+  if(choice==="cancel"||choice==null){ fillSettingsForm(); return; }
   commitRows(rows,model); doClose(); updateCtxRing();
   await loadModels();
   if(choice==="reload") await loadModel(els.model.value);     // apply load-time options immediately
@@ -1168,9 +1177,8 @@ async function resetSettings(){
   s.modelParams={}; s.scope={};
   save();
   reconcileModelLimits();
-  openSettings();          // repopulate the form from the fresh state
+  fillSettingsForm();      // the panel is already open, just repopulate it
   updateCtxRing();
-  $("#setErr").style.display="none";
 }
 
 /* ============ context editor ============ */
@@ -1226,7 +1234,7 @@ els.model.addEventListener("change",()=>{
   const c=currentConv(); c.model=els.model.value; state.settings.model=els.model.value; save();
   updateCap(); updateLoadUI(); updateCtxRing();
   // The panel shows values for the selected model, so repopulate it from the new model's layer.
-  if(els.settings.classList.contains("open")) openSettings();
+  if(els.settings.classList.contains("open")) fillSettingsForm();
 });
 els.loadBtn.addEventListener("click",()=>{ const n=els.model.value; if(loadingName||ejectingName) return; isLoaded()?ejectModel(n):loadModel(n); });
 $("#thinkBtn").addEventListener("click",()=>{ state.settings.think=!state.settings.think; save(); updateThinkToggle(); });
