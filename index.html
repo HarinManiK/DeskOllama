@@ -156,8 +156,12 @@
   .ctxblock textarea{display:block;width:100%;border:none;border-radius:0;background:transparent;resize:none;overflow:hidden;min-height:0;padding:5px 12px 11px;font-size:13px;line-height:1.55}
   .ctxblock textarea:focus{border:none;outline:none}
   .ctxblock textarea:disabled{color:var(--muted)}
+  .ctxblock.sys .bh{color:var(--primary)}
+  .ctxblock .bh .note{margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)}
   .ctx-actions{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border-soft)}
   .ctx-empty{color:var(--muted);text-align:center;padding:40px 0;font-size:14px}
+  /* Grows with its content like the context editor boxes; three lines to begin with. */
+  #s_system{resize:none;overflow:hidden;line-height:1.5;min-height:81px}
 
   .composer-wrap{flex:0 0 auto;padding:6px 16px 14px}
   .composer{max-width:768px;margin:0 auto;background:var(--composer);border:1px solid var(--border);border-radius:26px;padding:8px 8px 8px 16px;display:flex;align-items:flex-end;gap:8px}
@@ -276,7 +280,7 @@
     <div id="composeBar" style="display:none"><span>Reverted. Type and send to branch from here.</span><button id="composeCancel">Cancel</button></div>
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
-      <button class="send-btn" id="send" title="Send" disabled><svg id="sendIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      <button class="send-btn" id="send" data-tip="Send" disabled><svg id="sendIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </div>
     <div class="foot-note" id="tipDisplay"></div>
   </div>
@@ -292,13 +296,17 @@
     </div>
     <div class="set-group">
       <p class="gh">Behavior</p>
-      <div class="field"><label>System prompt<span class="help" data-tip="Instructions prepended to every conversation to steer how the model behaves.">?</span></label><textarea id="s_system" rows="3" placeholder="Optional. Applies to every chat."></textarea></div>
       <div class="cols">
         <div class="field"><label>Keep loaded (seconds)<span class="help" data-tip="Time after which the model automatically unloads from memory after being idle&#10;-1 = forever&#10;0 = unload after each response&#10;blank = Ollama's default">?</span></label><input type="number" step="1" id="s_keepalive" placeholder="300"></div>
         <div class="field"><label>Response format<span class="help" data-tip="Force replies to be valid JSON, or leave as plain text.">?</span></label><select id="s_format"><option value="">Text</option><option value="json">JSON</option></select></div>
       </div>
     </div>
     <div id="paramFields"></div>
+    <div class="set-group">
+      <p class="gh">System prompt</p>
+      <p class="gnote">Prepended to every conversation to steer how the model behaves. A single chat can override this from its Context panel.</p>
+      <div class="field"><textarea id="s_system" rows="3" placeholder="Optional. Applies to every chat."></textarea></div>
+    </div>
     <div id="setErr" class="field hint" style="display:none;color:var(--danger);border:1px solid var(--danger);border-radius:8px;padding:9px 11px;margin-top:14px"></div>
   </div>
 </aside>
@@ -728,6 +736,14 @@ const ICON_COPY='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" str
 const ICON_CHECK='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>';
 const ICON_REGEN='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>';
 const ICON_REVERT='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10H9"/></svg>';
+// Generation speed straight from Ollama: eval_count over eval_duration, which covers only
+// token generation (prompt processing and model load are excluded). Blank for older replies
+// saved before eval_duration was recorded.
+function tokRate(n){
+  const secs=(n.ed||0)/1e9;
+  if(!n.et || secs<=0) return "";
+  return (n.et/secs).toFixed(1)+" tok/s";
+}
 function actBtn(title,icon,fn){ const b=document.createElement("button"); b.title=title; b.innerHTML=icon; b.onclick=fn; return b; }
 function copyBtn(text){ const b=actBtn("Copy",ICON_COPY,()=>{ navigator.clipboard.writeText(text); b.innerHTML=ICON_CHECK; setTimeout(()=>b.innerHTML=ICON_COPY,300); }); return b; }
 function branchSwitcher(c,node,sibs){
@@ -744,7 +760,8 @@ function attachActions(c,node,dom,sibs){
   bar.appendChild(copyBtn(node.content));
   if(node.role==="user") bar.appendChild(actBtn("Revert to here",ICON_REVERT,()=>revertTo(node.id)));
   else if(node.id===c.leafId) bar.appendChild(actBtn("Regenerate",ICON_REGEN,()=>regenerate(node.id)));
-  if(node.role==="assistant" && node.meta){ const m=document.createElement("span"); m.className="meta"; m.textContent=node.meta; bar.appendChild(m); }
+  const info = node.role==="assistant" ? (tokRate(node)||node.meta) : "";
+  if(info){ const m=document.createElement("span"); m.className="meta"; m.textContent=info; bar.appendChild(m); }
   dom.row.appendChild(bar);   // below the bubble, outside .body
 }
 function openConversation(){
@@ -905,6 +922,7 @@ let controller=null;
 let live=null;   // {convId, dom, assistant} while a reply is streaming, so a chat switch can re-attach it
 function setBusy(on){
   els.send.classList.toggle("stop",on);
+  els.send.dataset.tip = on ? "Stop generating (Esc)" : "Send";
   els.sendIcon.innerHTML=on?'<rect x="6" y="6" width="12" height="12" rx="2"/>':'<path d="M12 19V5M5 12l7-7 7 7"/>';
   els.send.disabled=on?false:(!isLoaded()||!els.input.value.trim());
   els.model.disabled=on; els.loadBtn.disabled=on;
@@ -918,7 +936,7 @@ async function generate(){
   // here and openConversation() re-attaches it to a fresh row when the chat comes back.
   live={convId:c.id, dom, assistant};
   const msgs=[];
-  const sys=String(resolveSetting("system",c.model)||"");
+  const sys=convSystem(c);   // this chat's own override, else the layered setting
   if(sys.trim()) msgs.push({role:"system",content:sys});
   for(const nd of pathOf(c)) msgs.push({role:nd.role,content:nd.content});
   const payload={model:c.model, stream:true, messages:msgs, options:buildOptions(c.model)};
@@ -928,7 +946,8 @@ async function generate(){
 
   controller=new AbortController(); setBusy(true); let stats=null;
   const commit=()=>{ const an=addNode(c, parentId, "assistant", assistant.content, assistant.thinking, assistant.meta);
-    if(stats){ an.pt=stats.prompt_eval_count||0; an.et=stats.eval_count||0; }   // Ollama's raw prompt/output token counts
+    // Ollama's raw prompt/output token counts, plus how long generation itself took (ns).
+    if(stats){ an.pt=stats.prompt_eval_count||0; an.et=stats.eval_count||0; an.ed=stats.eval_duration||0; }
     touch(c); save();
     attachActions(c,an,live.dom,nodeChildren(c,an.parentId)); return an; };
   try{
@@ -1040,6 +1059,8 @@ function buildSettingsForm(src){
 function openSettings(){
   fillSettingsForm();
   els.settings.classList.add("open"); els.overlay.classList.add("open");
+  // Re-measure once visible, in case the drawer had no layout while it was off-screen.
+  requestAnimationFrame(()=>autosizeTa($("#s_system")));
 }
 // Repopulates every field from saved state for the selected model. Used when opening the
 // panel, when the model changes under it, and to throw away edits on Cancel.
@@ -1051,6 +1072,7 @@ function fillSettingsForm(){
   $("#s_format").value=resolveSetting("format",model)||"";
   $("#setModel").textContent=model||"";
   buildSettingsForm(resolveParams(model));
+  autosizeTa($("#s_system"));
   $("#setErr").style.display="none";
 }
 function readParams(){
@@ -1241,8 +1263,13 @@ async function resetSettings(){
 
 /* ============ context editor ============ */
 let ctxState=null;
+let ctxSystem="", ctxSystemBase="";   // edited value, and the value this chat inherits
+// The prompt a chat actually sends: its own override if it has one, otherwise the layered setting.
+function convSystem(c){ return String((c && c.system!=null ? c.system : resolveSetting("system", c && c.model)) || ""); }
 function openContext(){
   const c=currentConv(); const path=pathOf(c);
+  ctxSystemBase=String(resolveSetting("system",c.model)||"");
+  ctxSystem=convSystem(c);
   // Flat and parallel to `path`, which is what saveContext() rebuilds the branch from.
   // `block` groups each user message with the replies beneath it into one editable turn.
   let block=-1;
@@ -1256,10 +1283,36 @@ function openContext(){
   requestAnimationFrame(()=>$$("#ctxList textarea").forEach(autosizeTa));
 }
 function closeContext(){ $("#ctxeditor").classList.remove("open"); els.overlay.classList.remove("open"); ctxState=null; }
-function autosizeTa(ta){ ta.style.height="auto"; ta.style.height=ta.scrollHeight+"px"; }
+// scrollHeight covers content plus padding but not the border, and box-sizing is border-box
+// globally, so a bordered textarea would still scroll by its border width without this.
+function autosizeTa(ta){
+  ta.style.height="auto";
+  const cs=getComputedStyle(ta);
+  const border = cs.boxSizing==="border-box"
+    ? (parseFloat(cs.borderTopWidth)||0)+(parseFloat(cs.borderBottomWidth)||0) : 0;
+  ta.style.height=(ta.scrollHeight+border)+"px";
+}
+// The system prompt sits above the turns. It belongs to the chat rather than the message tree,
+// so editing it takes effect immediately for this chat instead of branching.
+function renderCtxSystem(list){
+  const box=document.createElement("div"); box.className="ctxblock sys";
+  const head=document.createElement("div"); head.className="bh";
+  head.innerHTML=`<span>System prompt</span><span class="note"></span>`;
+  const msg=document.createElement("div"); msg.className="ctxmsg";
+  const ta=document.createElement("textarea");
+  ta.value=ctxSystem;
+  ta.placeholder="No system prompt. Type here to set one for this chat only.";
+  const note=head.querySelector(".note");
+  const sync=()=>{ note.textContent = ctxSystem===ctxSystemBase ? "from settings" : "this chat only"; };
+  ta.addEventListener("input",()=>{ ctxSystem=ta.value; autosizeTa(ta); sync(); });
+  sync();
+  msg.appendChild(ta); box.append(head,msg); list.appendChild(box);
+  autosizeTa(ta);
+}
 function renderCtxList(){
   const list=$("#ctxList"); list.innerHTML="";
-  if(!ctxState.length){ list.innerHTML='<div class="ctx-empty">This branch has no messages yet.</div>'; return; }
+  renderCtxSystem(list);
+  if(!ctxState.length){ list.insertAdjacentHTML("beforeend",'<div class="ctx-empty">This branch has no messages yet.</div>'); return; }
   const blocks=[...new Set(ctxState.map(it=>it.block))];
   blocks.forEach((bi,n)=>{
     const items=ctxState.filter(it=>it.block===bi);
@@ -1288,9 +1341,12 @@ function renderCtxList(){
 }
 function saveContext(){
   const c=currentConv(); const path=pathOf(c);
+  // Matching what the chat already inherits clears the override rather than pinning a copy,
+  // so the chat keeps following the setting unless it genuinely differs.
+  if(ctxSystem===ctxSystemBase) delete c.system; else c.system=ctxSystem;
   let t=-1;
   for(let i=0;i<ctxState.length;i++){ const o=path[i], e=ctxState[i]; if(e.deleted || e.content!==o.content){ t=i; break; } }
-  if(t<0){ closeContext(); return; }                       // nothing changed
+  if(t<0){ touch(c); save(); closeContext(); openConversation(); return; }   // system prompt only
   const parentId=path[t].parentId;                          // branch from the topmost change
   let prev=parentId, last=parentId;
   for(let i=t;i<ctxState.length;i++){ const e=ctxState[i]; if(e.deleted) continue; const o=path[i];
@@ -1325,6 +1381,7 @@ $("#thinkBtn").addEventListener("click",()=>{ state.settings.think=!state.settin
 $("#composeCancel").addEventListener("click",()=>{ if(!compose) return; const c=currentConv(); const r=compose.restoreLeaf; compose=null; if(r) setLeaf(c,r); save(); els.input.value=""; els.input.dispatchEvent(new Event("input")); openConversation(); });
 els.collapseBtn.addEventListener("click",()=>{ els.sidebar.classList.add("collapsed"); els.showSidebar.style.display=""; });
 els.showSidebar.addEventListener("click",()=>{ els.sidebar.classList.remove("collapsed"); els.showSidebar.style.display="none"; });
+$("#s_system").addEventListener("input",e=>autosizeTa(e.target));
 els.settingsBtn.addEventListener("click",openSettings);
 els.closeSettings.addEventListener("click",closeSettings);
 els.overlay.addEventListener("click",()=>{ if($("#ctxeditor").classList.contains("open")) closeContext(); else closeSettings(); });
@@ -1339,7 +1396,8 @@ els.thread.addEventListener("click",e=>{
   const code=btn.closest("pre").querySelector("code"); navigator.clipboard.writeText(code.textContent);
   const o=btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=o,900);
 });
-document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ const m=$("#confirm"); if(m.classList.contains("open")){ if(m._cancel) m._cancel(); } else if($("#ctxeditor").classList.contains("open")) closeContext(); else if(els.settings.classList.contains("open")) closeSettings(); } });
+// Escape dismisses whatever is on top: modal, then a drawer, and otherwise stops generation.
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ const m=$("#confirm"); if(m.classList.contains("open")){ if(m._cancel) m._cancel(); } else if($("#ctxeditor").classList.contains("open")) closeContext(); else if(els.settings.classList.contains("open")) closeSettings(); else if(controller) controller.abort(); } });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refreshPs(); });
 $("#confirm").addEventListener("click",e=>{ const m=$("#confirm"); if(e.target===m && m._cancel) m._cancel(); });  // backdrop = cancel
 
