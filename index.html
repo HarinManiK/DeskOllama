@@ -434,7 +434,7 @@ function nextChatTitle(){
 }
 function newConversation(){
   const id=uid();
-  state.conversations[id]={id, title:nextChatTitle(), model:state.settings.model, nodes:{}, leafId:null, ctxUsed:0, updatedAt:Date.now()};
+  state.conversations[id]={id, title:nextChatTitle(), model:state.settings.model, nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
   state.currentId=id; compose=null; save(); return state.conversations[id];
 }
 function migrateConv(c){            // old flat .messages → node chain
@@ -444,7 +444,12 @@ function migrateConv(c){            // old flat .messages → node chain
   c.nodes=nodes; c.leafId=prev; delete c.messages; return c;
 }
 function currentConv(){ let c=state.conversations[state.currentId]; if(!c) c=newConversation(); return migrateConv(c); }
-function sortedConvs(){ return Object.values(state.conversations).sort((a,b)=>b.updatedAt-a.updatedAt); }
+// Newest chat first, by creation rather than last activity, so the numbering in the titles
+// always reads downwards. Ordering uses the monotonic counter rather than createdAt, because
+// two chats made in the same millisecond would tie and fall back to insertion order, which is
+// ascending. Chats saved before seq existed fall back to their timestamps.
+const convOrder = c => c.seq || c.createdAt || c.updatedAt || 0;
+function sortedConvs(){ return Object.values(state.conversations).sort((a,b)=>convOrder(b)-convOrder(a)); }
 function touch(c){ c.updatedAt=Date.now(); }
 // --- tree helpers ---
 function nodeChildren(c,pid){ return Object.values(c.nodes).filter(n=>n.parentId===pid).sort((a,b)=>(a.ord||0)-(b.ord||0)); }
@@ -699,6 +704,8 @@ function renameConv(id,el){
 }
 function deleteConv(id){
   if(!confirm("Delete this chat?")) return;
+  // Deleting the chat a reply is streaming into would commit that reply to a dropped record.
+  if(live && live.convId===id && controller) controller.abort();
   delete state.conversations[id]; compose=null;
   if(state.currentId===id){ const rest=sortedConvs(); state.currentId=rest.length?rest[0].id:null; if(!state.currentId) newConversation(); }
   save(); openConversation();
@@ -748,6 +755,16 @@ function openConversation(){
     dom.content.innerHTML=md(node.content);
     els.thread.appendChild(dom.row);
     attachActions(c,node,dom,nodeChildren(c,node.parentId));
+  }
+  // A reply still streaming into this conversation was detached by the wipe above, so give it
+  // a fresh row and repaint what has arrived so far. Generation itself is never interrupted.
+  if(live && live.convId===c.id){
+    const dom=rowNode("assistant");
+    if(live.assistant.thinking){ dom.think.style.display=""; dom.think.open=true; dom.tbody.textContent=live.assistant.thinking; }
+    dom.content.innerHTML=md(live.assistant.content);
+    dom.content.classList.add("cursor");
+    els.thread.appendChild(dom.row);
+    live.dom=dom;
   }
   $("#composeBar").style.display = compose ? "flex" : "none";
   updateLoadUI(); updateCtxRing(); scrollBottom();
@@ -882,6 +899,7 @@ function buildOptions(modelName){
 
 /* ============ generation ============ */
 let controller=null;
+let live=null;   // {convId, dom, assistant} while a reply is streaming, so a chat switch can re-attach it
 function setBusy(on){
   els.send.classList.toggle("stop",on);
   els.sendIcon.innerHTML=on?'<rect x="6" y="6" width="12" height="12" rx="2"/>':'<path d="M12 19V5M5 12l7-7 7 7"/>';
@@ -892,6 +910,10 @@ async function generate(){
   const c=currentConv();
   const parentId=c.leafId;   // the assistant reply attaches under the current leaf (last user node)
   const dom=rowNode("assistant"); els.thread.appendChild(dom.row); dom.content.classList.add("cursor"); autostick=true; scrollBottom();
+  const assistant={content:"",thinking:"",meta:""};
+  // Switching chats re-renders the thread and would drop this row, so the stream is tracked
+  // here and openConversation() re-attaches it to a fresh row when the chat comes back.
+  live={convId:c.id, dom, assistant};
   const msgs=[];
   const sys=String(resolveSetting("system",c.model)||"");
   if(sys.trim()) msgs.push({role:"system",content:sys});
@@ -901,12 +923,11 @@ async function generate(){
   const ka=parseKeepAlive(resolveSetting("keepAlive",c.model)); if(ka.val!==undefined) payload.keep_alive=ka.val;
   const fmt=resolveSetting("format",c.model); if(fmt) payload.format=fmt;
 
-  const assistant={content:"",thinking:"",meta:""};
   controller=new AbortController(); setBusy(true); let stats=null;
   const commit=()=>{ const an=addNode(c, parentId, "assistant", assistant.content, assistant.thinking, assistant.meta);
     if(stats){ an.pt=stats.prompt_eval_count||0; an.et=stats.eval_count||0; }   // Ollama's raw prompt/output token counts
     touch(c); save();
-    attachActions(c,an,dom,nodeChildren(c,an.parentId)); return an; };
+    attachActions(c,an,live.dom,nodeChildren(c,an.parentId)); return an; };
   try{
     const r=await fetch(base()+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),signal:controller.signal});
     if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text()).slice(0,180));
@@ -918,25 +939,26 @@ async function generate(){
         const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1); if(!line) continue;
         let o; try{o=JSON.parse(line)}catch{continue}
         if(o.message){
-          if(o.message.thinking){ assistant.thinking+=o.message.thinking; dom.think.style.display=""; dom.think.open=true; dom.tbody.textContent=assistant.thinking; dom.tbody.classList.add("think-live"); }
-          if(o.message.content){ assistant.content+=o.message.content; dom.tbody.classList.remove("think-live"); dom.content.innerHTML=md(assistant.content); }
+          const d=live.dom;
+          if(o.message.thinking){ assistant.thinking+=o.message.thinking; d.think.style.display=""; d.think.open=true; d.tbody.textContent=assistant.thinking; d.tbody.classList.add("think-live"); }
+          if(o.message.content){ assistant.content+=o.message.content; d.tbody.classList.remove("think-live"); d.content.innerHTML=md(assistant.content); }
           if(autostick) scrollBottom();
         }
-        if(o.done){ stats=o; if(assistant.thinking) dom.think.open=false; }
+        if(o.done){ stats=o; if(assistant.thinking) live.dom.think.open=false; }
       }
     }
-    dom.content.classList.remove("cursor");
+    live.dom.content.classList.remove("cursor");
     if(stats && stats.eval_count){ assistant.meta=""; }
     commit();
   }catch(err){
-    dom.content.classList.remove("cursor");
+    live.dom.content.classList.remove("cursor");
     if(err.name==="AbortError"){
-      if(assistant.content||assistant.thinking){ commit(); dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--muted);font-size:13px;margin-top:6px">⏹ stopped</p>`; }
-      else dom.row.remove();
+      if(assistant.content||assistant.thinking){ commit(); live.dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--muted);font-size:13px;margin-top:6px">⏹ stopped</p>`; }
+      else live.dom.row.remove();
     }else if(assistant.content||assistant.thinking){
-      commit(); dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(err.message)}</p>`;
-    }else{ dom.content.innerHTML=`<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
-  }finally{ controller=null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); els.input.focus(); }
+      commit(); live.dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(err.message)}</p>`;
+    }else{ live.dom.content.innerHTML=`<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
+  }finally{ live=null; controller=null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); els.input.focus(); }
 }
 function sendUserMessage(text){
   const c=currentConv();
@@ -1262,7 +1284,8 @@ function submit(){
   els.input.value=""; els.input.style.height="auto"; els.send.disabled=true; sendUserMessage(t);
 }
 els.send.addEventListener("click",()=>{ controller ? controller.abort() : submit(); });
-els.newChat.addEventListener("click",()=>{ if(controller) controller.abort(); newConversation(); openConversation(); els.input.focus(); });
+// Leaves any in-flight reply running, same as switching to an existing chat.
+els.newChat.addEventListener("click",()=>{ newConversation(); openConversation(); els.input.focus(); });
 els.model.addEventListener("change",()=>{
   const c=currentConv(); c.model=els.model.value; state.settings.model=els.model.value; save();
   updateCap(); updateLoadUI(); updateCtxRing();
