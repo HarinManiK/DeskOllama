@@ -143,15 +143,19 @@
   #ctxeditor.open{transform:translateX(0)}
   #ctxList{flex:1;overflow-y:auto;padding:8px 18px}
   .ctxtotal{font-size:12px;color:var(--muted);font-family:var(--mono);margin-left:12px}
-  .ctxrow{border:1px solid var(--border);border-radius:10px;margin:10px 0;overflow:hidden;transition:opacity .15s}
-  .ctxrow.deleted{opacity:.4}
-  .ctxrow .ch{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-  .ctxrow .ch .role.u{color:#8fb0ff}.ctxrow .ch .role.a{color:#7fe0b0}
-  .ctxrow .ch .tok{margin-left:auto;color:var(--muted);font-family:var(--mono);font-weight:400;text-transform:none}
-  .ctxrow .del{color:var(--muted);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600}
-  .ctxrow .del:hover{background:var(--border);color:var(--txt)}
-  .ctxrow textarea{width:100%;border:none;border-radius:0;background:transparent;resize:vertical;min-height:56px;max-height:340px;padding:10px 12px;font-size:13px;line-height:1.5}
-  .ctxrow textarea:focus{border:none;outline:none}
+  /* One block per turn (the user message plus the replies under it). Deleting is per block. */
+  .ctxblock{border:1px solid var(--border);border-radius:10px;margin:10px 0;overflow:hidden;transition:opacity .15s}
+  .ctxblock.deleted{opacity:.4}
+  .ctxblock .bh{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .ctxblock .bh .del{margin-left:auto;color:var(--muted);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0}
+  .ctxblock .bh .del:hover{background:var(--border);color:var(--txt)}
+  .ctxmsg+.ctxmsg{border-top:1px solid var(--border-soft)}
+  .ctxmsg>.role{padding:8px 12px 0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .ctxmsg>.role.u{color:#8fb0ff} .ctxmsg>.role.a{color:#7fe0b0}
+  /* Grown to fit their content, so the panel scrolls rather than each box. */
+  .ctxblock textarea{display:block;width:100%;border:none;border-radius:0;background:transparent;resize:none;overflow:hidden;min-height:0;padding:5px 12px 11px;font-size:13px;line-height:1.55}
+  .ctxblock textarea:focus{border:none;outline:none}
+  .ctxblock textarea:disabled{color:var(--muted)}
   .ctx-actions{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border-soft)}
   .ctx-empty{color:var(--muted);text-align:center;padding:40px 0;font-size:14px}
 
@@ -1240,22 +1244,47 @@ async function resetSettings(){
 let ctxState=null;
 function openContext(){
   const c=currentConv(); const path=pathOf(c);
-  ctxState=path.map(n=>({id:n.id, role:n.role, content:n.content, thinking:n.thinking, meta:n.meta, deleted:false}));
+  // Flat and parallel to `path`, which is what saveContext() rebuilds the branch from.
+  // `block` groups each user message with the replies beneath it into one editable turn.
+  let block=-1;
+  ctxState=path.map(n=>{
+    if(n.role==="user" || block<0) block++;
+    return {id:n.id, role:n.role, content:n.content, thinking:n.thinking, meta:n.meta, deleted:false, block};
+  });
   renderCtxList();
   $("#ctxeditor").classList.add("open"); els.overlay.classList.add("open");
+  // Re-measure once visible, in case the panel had no layout while it was off-screen.
+  requestAnimationFrame(()=>$$("#ctxList textarea").forEach(autosizeTa));
 }
 function closeContext(){ $("#ctxeditor").classList.remove("open"); els.overlay.classList.remove("open"); ctxState=null; }
+function autosizeTa(ta){ ta.style.height="auto"; ta.style.height=ta.scrollHeight+"px"; }
 function renderCtxList(){
   const list=$("#ctxList"); list.innerHTML="";
   if(!ctxState.length){ list.innerHTML='<div class="ctx-empty">This branch has no messages yet.</div>'; return; }
-  ctxState.forEach(it=>{
-    const row=document.createElement("div"); row.className="ctxrow"+(it.deleted?" deleted":"");
-    row.innerHTML=`<div class="ch"><span class="role ${it.role==='user'?'u':'a'}">${it.role==='user'?'You':'Assistant'}</span><button class="del">${it.deleted?'Undo':'Delete'}</button></div><textarea></textarea>`;
-    const ta=row.querySelector("textarea"), del=row.querySelector(".del");
-    ta.value=it.content; ta.disabled=it.deleted;
-    ta.addEventListener("input",()=>{ it.content=ta.value; });
-    del.onclick=()=>{ it.deleted=!it.deleted; row.classList.toggle("deleted",it.deleted); del.textContent=it.deleted?"Undo":"Delete"; ta.disabled=it.deleted; };
-    list.appendChild(row);
+  const blocks=[...new Set(ctxState.map(it=>it.block))];
+  blocks.forEach((bi,n)=>{
+    const items=ctxState.filter(it=>it.block===bi);
+    const gone=()=>items.every(it=>it.deleted);
+    const box=document.createElement("div"); box.className="ctxblock"+(gone()?" deleted":"");
+    const head=document.createElement("div"); head.className="bh";
+    head.innerHTML=`<span>Turn ${n+1}</span><button class="del"></button>`;
+    box.appendChild(head);
+    const tas=[];
+    for(const it of items){
+      const msg=document.createElement("div"); msg.className="ctxmsg";
+      const lbl=document.createElement("div"); lbl.className="role "+(it.role==="user"?"u":"a");
+      lbl.textContent=it.role==="user"?"You":"Assistant";
+      const ta=document.createElement("textarea");
+      ta.value=it.content;
+      ta.addEventListener("input",()=>{ it.content=ta.value; autosizeTa(ta); });
+      msg.append(lbl,ta); box.appendChild(msg); tas.push(ta);
+    }
+    const del=head.querySelector(".del");
+    const sync=()=>{ const d=gone(); box.classList.toggle("deleted",d); del.textContent=d?"Undo":"Delete"; tas.forEach(ta=>ta.disabled=d); };
+    del.onclick=()=>{ const d=!gone(); items.forEach(it=>it.deleted=d); sync(); };   // whole turn at once
+    sync();
+    list.appendChild(box);
+    tas.forEach(autosizeTa);
   });
 }
 function saveContext(){
