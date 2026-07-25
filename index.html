@@ -1093,9 +1093,14 @@ function reviewDialog(rows,model){
       box.appendChild(p);
     }
   };
+  // "Keep editing" is the dismiss action (Escape / backdrop), so nothing is lost by accident.
+  // "Discard" is the only way out of the panel without saving, since every close path
+  // (the X, the overlay and Escape) routes through this dialog once something has changed.
+  const keep={label:"Keep editing",value:"cancel",cancel:true};
+  const discard={label:"Discard changes",value:"discard"};
   const buttons = needsReloadChoice(rows)
-    ? [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
-    : [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save",value:"save",primary:true} ];
+    ? [ discard, keep, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
+    : [ discard, keep, {label:"Save",value:"save",primary:true} ];
   return dialog(`Review changes (${model||"no model"})`, "", buttons, {wide:true, build});
 }
 // "Save & reload now" reloads the selected model, so the choice is only worth offering when
@@ -1141,7 +1146,9 @@ async function closeSettings(){
   const rows=buildRows(f,model);
   if(!rows.some(r=>r.changed)){ doClose(); return; }
   const choice=await reviewDialog(rows,model);
-  if(choice==="cancel"||choice==null){ doClose(); return; }   // nothing was committed
+  if(choice==="cancel"||choice==null) return;                 // stay in the panel, edits intact
+  // Discard needs no cleanup: nothing was committed, and reopening rebuilds the form from state.
+  if(choice==="discard"){ doClose(); return; }
   commitRows(rows,model); doClose(); updateCtxRing();
   await loadModels();
   if(choice==="reload") await loadModel(els.model.value);     // apply load-time options immediately
