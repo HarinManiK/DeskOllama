@@ -220,19 +220,14 @@
   .scap button.on{background:var(--primary);color:#fff}
   .scap.locked{opacity:.6}
   .scap.locked button{cursor:default}
-  .rev-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-soft)}
-  .rev-row:last-child{border-bottom:none}
+  .rev-item{border-bottom:1px solid var(--border-soft)}
+  .rev-item:last-child{border-bottom:none}
+  .rev-row{display:flex;align-items:center;gap:10px;padding:9px 0}
   .rev-row .rl{flex:1;min-width:0;font-size:13px;color:var(--txt)}
   .rev-row .rv{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
   .rev-row .rv b{color:var(--txt);font-weight:600}
-  .rev-note{font-size:11.5px;line-height:1.45;color:var(--muted);padding:0 0 8px;margin-top:-4px}
+  .rev-note{font-size:11.5px;line-height:1.45;color:var(--muted);padding:0 0 9px;margin-top:-5px}
   .rev-note.warn{color:#eab308}
-  .rev-group{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 2px}
-  .rev-more{margin-top:6px;border-top:1px solid var(--border-soft)}
-  .rev-more>summary{cursor:pointer;list-style:none;padding:10px 0 2px;font-size:12.5px;color:var(--muted);user-select:none;display:flex;align-items:center;gap:7px}
-  .rev-more>summary::-webkit-details-marker{display:none}
-  .rev-more>summary::before{content:"▸";font-size:10px;transition:.15s}
-  .rev-more[open]>summary::before{transform:rotate(90deg)}
   .setsub{margin-left:10px;font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
   .ctxwarn{display:none;color:#eab308}
 
@@ -403,7 +398,7 @@ function load(){
       if(v3.settings.params.num_ctx==null) v3.settings.params.num_ctx=DEFAULT_NUM_CTX;
       // Older blobs predate the layered model: their params become the global layer verbatim,
       // per-model starts empty, so every model inherits exactly what it had before.
-      // Cloned, never aliased to DEFAULT_SETTINGS — these two get mutated in place.
+      // Cloned, never aliased to DEFAULT_SETTINGS (these two get mutated in place).
       v3.settings.scope = {...(v3.settings.scope||{})};
       v3.settings.modelParams = {...(v3.settings.modelParams||{})};
       const ka=v3.settings.keepAlive;                                  // migrate old "5m"/"1h" → seconds
@@ -777,7 +772,7 @@ function resolveParams(model){ const p={}; for(const it of SPEC_ITEMS) p[it.k]=r
 
 /* ============ per-model compatibility ============
    Driven entirely by what /api/tags reports, so a model pulled later is handled with no
-   extra work. A missing/zero context_length means "unknown" — never clamp on a guess. */
+   extra work. A missing/zero context_length means "unknown" (never clamp on a guess). */
 function modelEntry(name){ return modelCache.find(m=>m.name===name) || null; }
 function modelMaxCtxFor(name){
   const m=modelEntry(name);
@@ -818,8 +813,8 @@ function reconcileModelLimits(){
   return changed;
 }
 // Final backstop: covers models that have no override yet (e.g. pulled since the last refresh).
-// An override the user typed themselves is honored — Ollama rope-scales past the trained
-// context — and is surfaced as an inline warning in the settings panel instead.
+// An override the user typed themselves is honored (Ollama rope-scales past the trained
+// context) and is surfaced as an inline warning in the settings panel instead.
 function effectiveNumCtx(model){
   let n=Number(resolveSetting("num_ctx",model));
   if(!Number.isFinite(n)||n<=0) n=DEFAULT_NUM_CTX;
@@ -1031,13 +1026,13 @@ function fmtVal(k,v){
   if(it){
     if(it.type==="tri") return v==null?"Auto":(v?"On":"Off");
     if(it.type==="bool") return v?"On":"Off";
-    if(it.type==="list") return (Array.isArray(v)&&v.length)?v.join(" / "):"—";
-    if(v==null||v==="") return "—";
+    if(it.type==="list") return (Array.isArray(v)&&v.length)?v.join(" / "):"not set";
+    if(v==null||v==="") return "not set";
     if(it.type==="select"){ const o=(it.options||[]).find(x=>String(x[0])===String(v)); return o?o[1]:String(v); }
     if(it.type==="range") return Number(v).toFixed(2);
     return String(v);
   }
-  if(v==null||v==="") return k==="format"?"Text":"—";
+  if(v==null||v==="") return k==="format"?"Text":"not set";
   if(k==="format") return v==="json"?"JSON":"Text";
   const s=String(v).replace(/\s+/g," ").trim();
   return s.length>36?s.slice(0,36)+"…":s;
@@ -1050,16 +1045,17 @@ function buildRows(f,model){
     return { key:k, from, to, scope:scopeOf(k), changed:!sameValue(k,to,from) };
   });
 }
-function rowsToApply(rows){ return rows.filter(r=>r.changed || r.scope!==scopeOf(r.key)); }
+// Only settings the user actually changed are reviewable, so an untouched setting can never
+// have its scope flipped and never needs writing.
+function changedRows(rows){ return rows.filter(r=>r.changed); }
 
-// Renders one setting: label, value (or old → new), and its scope capsule.
+// Renders one changed setting: label, old -> new, and its scope capsule.
 // Flipping the capsule mutates `row.scope` in place and refreshes the consequence note.
-function reviewRow(row,showChange){
+function reviewRow(row){
   const el=document.createElement("div"); el.className="rev-row";
   const lbl=document.createElement("div"); lbl.className="rl"; lbl.textContent=labelOf(row.key);
   const val=document.createElement("div"); val.className="rv";
-  if(showChange) val.innerHTML=`${esc(fmtVal(row.key,row.from))} → <b>${esc(fmtVal(row.key,row.to))}</b>`;
-  else val.textContent=fmtVal(row.key,row.from);
+  val.innerHTML=`${esc(fmtVal(row.key,row.from))} → <b>${esc(fmtVal(row.key,row.to))}</b>`;
   const locked=GLOBAL_ONLY_KEYS.includes(row.key);
   const cap=document.createElement("div"); cap.className="scap"+(locked?" locked":"");
   cap.innerHTML=locked
@@ -1074,7 +1070,7 @@ function reviewRow(row,showChange){
     if(row.scope==="global" && !locked){
       const n=countOverrides(row.key);
       if(n) msgs.push(`Clears the saved value for ${n} model${n===1?"":"s"}.`);
-      for(const v of fitToModels(row.key,row.to)){ msgs.push(`${v.msg} — saved as ${v.fit.toLocaleString()} for it.`); warn=true; }
+      for(const v of fitToModels(row.key,row.to)){ msgs.push(`${v.msg}. Saved as ${v.fit.toLocaleString()} for it.`); warn=true; }
     }
     note.textContent=msgs.join(" ");
     note.classList.toggle("warn",warn);
@@ -1083,43 +1079,31 @@ function reviewRow(row,showChange){
   cap.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{ row.scope=b.dataset.s; sync(); });
   sync();
 
-  const frag=document.createDocumentFragment();
-  frag.append(el,note);
-  return frag;
+  const item=document.createElement("div"); item.className="rev-item";
+  item.append(el,note);
+  return item;
 }
 function reviewDialog(rows,model){
-  const changed=rows.filter(r=>r.changed), rest=rows.filter(r=>!r.changed);
+  const changed=changedRows(rows);
   const build=box=>{
-    if(changed.length){
-      const h=document.createElement("p"); h.className="rev-group"; h.textContent="Changed";
-      box.appendChild(h);
-      changed.forEach(r=>box.appendChild(reviewRow(r,true)));
-    }
-    if(rest.length){
-      const d=document.createElement("details"); d.className="rev-more";
-      d.innerHTML=`<summary>Show all settings (${rest.length})</summary>`;
-      const inner=document.createElement("div");
-      rest.forEach(r=>inner.appendChild(reviewRow(r,false)));
-      d.appendChild(inner);
-      box.appendChild(d);
-    }
+    changed.forEach(r=>box.appendChild(reviewRow(r)));
     if(!modelCache.length){
       const p=document.createElement("p"); p.className="rev-note warn"; p.style.display="block";
-      p.textContent="Model list unavailable — per-model limits could not be verified.";
+      p.textContent="Model list unavailable. Per-model limits could not be verified.";
       box.appendChild(p);
     }
   };
   const buttons = needsReloadChoice(rows)
     ? [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
     : [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save",value:"save",primary:true} ];
-  return dialog(`Review changes — ${model||"no model"}`, "", buttons, {wide:true, build});
+  return dialog(`Review changes (${model||"no model"})`, "", buttons, {wide:true, build});
 }
 // "Save & reload now" reloads the selected model, so the choice is only worth offering when
 // that model is loaded and a load-time option is actually changing for it. Either scope
 // changes its effective value: a per-model write targets it, and a global write purges the
 // per-model copy that would otherwise have masked the new value.
 function needsReloadChoice(rows){
-  return isLoaded() && rowsToApply(rows).some(r=>LOAD_TIME_KEYS.includes(r.key));
+  return isLoaded() && changedRows(rows).some(r=>LOAD_TIME_KEYS.includes(r.key));
 }
 
 function readForm(){
@@ -1135,7 +1119,7 @@ function validateForm(f){
 // Writes each row to the layer its capsule selected. Scope choices are sticky, so the
 // classification survives closing and reopening the panel.
 function commitRows(rows,model){
-  for(const r of rowsToApply(rows)){
+  for(const r of changedRows(rows)){
     if(r.scope==="global"){
       setGlobalValue(r.key,r.to);
       purgeKey(r.key);        // global means global: stale per-model copies would mask it
