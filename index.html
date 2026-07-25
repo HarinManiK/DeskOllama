@@ -416,9 +416,25 @@ function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e
 /* ============ conversations (tree of message nodes) ============ */
 let _ord=Date.now(); const nextOrd=()=>_ord++;
 let compose=null;   // {parentId} while a reverted-into branch is being composed (not yet sent)
+const CHAT_TITLE_RE = /^(\d{2}\/\d{2}\/\d{4}) - Chat (\d+)$/;
+function dateStamp(d){
+  const p=n=>String(n).padStart(2,"0");
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`;
+}
+// "25/07/2026 - Chat 3". Numbering restarts each day and takes the highest number already
+// used that day, so deleting or renaming a chat can never produce a duplicate title.
+function nextChatTitle(){
+  const stamp=dateStamp(new Date());
+  let max=0;
+  for(const c of Object.values(state.conversations)){
+    const m=CHAT_TITLE_RE.exec(c.title||"");
+    if(m && m[1]===stamp) max=Math.max(max, parseInt(m[2],10));
+  }
+  return `${stamp} - Chat ${max+1}`;
+}
 function newConversation(){
   const id=uid();
-  state.conversations[id]={id, title:"New chat", model:state.settings.model, nodes:{}, leafId:null, ctxUsed:0, updatedAt:Date.now()};
+  state.conversations[id]={id, title:nextChatTitle(), model:state.settings.model, nodes:{}, leafId:null, ctxUsed:0, updatedAt:Date.now()};
   state.currentId=id; compose=null; save(); return state.conversations[id];
 }
 function migrateConv(c){            // old flat .messages → node chain
@@ -523,9 +539,27 @@ async function loadModels(){
     updateCap(); save(); await refreshPs();
   }catch(e){ setConn(false,"offline"); showCorsHelp(e); }
 }
+// Token counts in decimal units, so 131072 reads as "131k" rather than the binary "128K"
+// the preset chips use. Any hand-typed value formats the same way: 141348 -> "141k",
+// 1034976 -> "1.0M", 1534842 -> "1.5M".
+function fmtCtx(n){
+  if(!Number.isFinite(n) || n<=0) return "";
+  if(n<1000) return String(n);
+  const k=Math.round(n/1000);
+  if(k>=1000) return (n/1e6).toFixed(1)+"M";   // 999999 would otherwise read "1000k"
+  return k+"k";
+}
 function updateCap(){
   const m=modelCache.find(x=>x.name===els.model.value);
-  els.capinfo.textContent = m&&m.details ? [m.details.parameter_size,m.details.quantization_level,(m.capabilities||[]).join(" ")].filter(Boolean).join(" · ") : "";
+  if(m&&m.details){
+    const ctx=fmtCtx(effectiveNumCtx(els.model.value));
+    els.capinfo.textContent=[
+      m.details.parameter_size,
+      m.details.quantization_level,
+      ctx && ctx+" context",
+      (m.capabilities||[]).join(" "),
+    ].filter(Boolean).join(" · ");
+  }else els.capinfo.textContent="";
   updateThinkToggle();
 }
 function updateThinkToggle(){
@@ -871,7 +905,7 @@ async function generate(){
   controller=new AbortController(); setBusy(true); let stats=null;
   const commit=()=>{ const an=addNode(c, parentId, "assistant", assistant.content, assistant.thinking, assistant.meta);
     if(stats){ an.pt=stats.prompt_eval_count||0; an.et=stats.eval_count||0; }   // Ollama's raw prompt/output token counts
-    touch(c); if(c.title==="New chat") autoTitle(c); save();
+    touch(c); save();
     attachActions(c,an,dom,nodeChildren(c,an.parentId)); return an; };
   try{
     const r=await fetch(base()+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),signal:controller.signal});
@@ -904,7 +938,6 @@ async function generate(){
     }else{ dom.content.innerHTML=`<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
   }finally{ controller=null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); els.input.focus(); }
 }
-function autoTitle(c){ const f=pathOf(c).find(n=>n.role==="user"); if(f) c.title=f.content.replace(/\s+/g," ").trim().slice(0,42)||"New chat"; }
 function sendUserMessage(text){
   const c=currentConv();
   const parentId = compose ? compose.parentId : c.leafId; compose=null;
@@ -1178,7 +1211,7 @@ async function resetSettings(){
   save();
   reconcileModelLimits();
   fillSettingsForm();      // the panel is already open, just repopulate it
-  updateCtxRing();
+  updateCap(); updateCtxRing();
 }
 
 /* ============ context editor ============ */
