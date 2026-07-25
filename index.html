@@ -210,6 +210,31 @@
   .modal-card h3{margin:0 0 10px;font-size:16px}
   .modal-card .m-msg{font-size:14px;color:var(--txt-dim);line-height:1.55}
   .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+  .modal-card.wide{width:min(620px,94vw)}
+  .modal-card.wide .m-msg{max-height:58vh;overflow-y:auto;margin:0 -4px;padding:0 4px}
+
+  /* Scope capsule + review dialog */
+  .scap{display:inline-flex;flex:0 0 auto;border:1px solid var(--border);border-radius:20px;overflow:hidden;font-size:11px;font-weight:600}
+  .scap button{padding:3px 9px;color:var(--muted);white-space:nowrap;line-height:1.5}
+  .scap button:hover:not(.on){background:var(--panel-2);color:var(--txt)}
+  .scap button.on{background:var(--primary);color:#fff}
+  .scap.locked{opacity:.6}
+  .scap.locked button{cursor:default}
+  .rev-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-soft)}
+  .rev-row:last-child{border-bottom:none}
+  .rev-row .rl{flex:1;min-width:0;font-size:13px;color:var(--txt)}
+  .rev-row .rv{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+  .rev-row .rv b{color:var(--txt);font-weight:600}
+  .rev-note{font-size:11.5px;line-height:1.45;color:var(--muted);padding:0 0 8px;margin-top:-4px}
+  .rev-note.warn{color:#eab308}
+  .rev-group{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 2px}
+  .rev-more{margin-top:6px;border-top:1px solid var(--border-soft)}
+  .rev-more>summary{cursor:pointer;list-style:none;padding:10px 0 2px;font-size:12.5px;color:var(--muted);user-select:none;display:flex;align-items:center;gap:7px}
+  .rev-more>summary::-webkit-details-marker{display:none}
+  .rev-more>summary::before{content:"▸";font-size:10px;transition:.15s}
+  .rev-more[open]>summary::before{transform:rotate(90deg)}
+  .setsub{margin-left:10px;font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+  .ctxwarn{display:none;color:#eab308}
 
   @media(max-width:760px){
     #sidebar{position:absolute;z-index:30;height:100%}
@@ -260,7 +285,7 @@
 
 <div id="overlay"></div>
 <aside id="settings">
-  <div class="set-head"><h2>Settings</h2><button class="btn" id="resetSettings" style="margin-left:12px;padding:6px 10px;font-size:12px">Reset to defaults</button><span class="grow"></span><button class="tb-btn" id="closeSettings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="set-head"><h2>Settings</h2><span class="setsub" id="setModel"></span><button class="btn" id="resetSettings" style="margin-left:12px;padding:6px 10px;font-size:12px">Reset to defaults</button><span class="grow"></span><button class="tb-btn" id="closeSettings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
   <div class="set-body">
     <div class="set-group">
       <p class="gh">Connection</p>
@@ -299,9 +324,12 @@ const $$ = s => [...document.querySelectorAll(s)];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
 /* ============ full option spec (defaults = Ollama defaults) ============ */
+// Single source of truth for the context default. Referenced by the spec, the storage
+// backfill, the ctx ring and the settings form so the fallbacks can never drift apart.
+const DEFAULT_NUM_CTX = 4096;
 const OPTION_SPEC = [
   { group:"Context length", items:[
-    {k:"num_ctx",           label:"Context window (num_ctx)", type:"ctx",   def:65536, tip:"How many tokens the model can see at once (prompt + reply). Larger = more memory used."},
+    {k:"num_ctx",           label:"Context window (num_ctx)", type:"ctx",   def:DEFAULT_NUM_CTX, tip:"How many tokens the model can see at once (prompt + reply). Larger = more memory used."},
   ]},
   { group:"Sampling", items:[
     {k:"temperature",       label:"Temperature",              type:"range", min:0, max:2, step:0.05, def:0.8, tip:"Higher = more random and creative; lower = more focused and deterministic."},
@@ -341,16 +369,43 @@ const SPEC_BY_KEY = Object.fromEntries(SPEC_ITEMS.map(it=>[it.k,it]));
 const LOAD_TIME_KEYS = ["num_ctx","num_batch","num_keep","num_gpu","main_gpu","num_thread","use_mmap","use_mlock","low_vram","numa"];
 function defaultParams(){ const p={}; for(const it of SPEC_ITEMS) p[it.k] = (it.def===undefined?null:it.def); return p; }
 
+/* ---- scopable settings ----
+   Every setting is either global (one value shared by all models) or per-model.
+   Settings outside OPTION_SPEC live directly on state.settings; spec items live in
+   state.settings.params. Both flow through the same scope/diff/review pipeline. */
+const EXTRA_SETTINGS = [
+  {k:"baseUrl",   label:"Ollama base URL",       locked:true},   // the server, not a model property
+  {k:"system",    label:"System prompt"},
+  {k:"keepAlive", label:"Keep loaded (seconds)"},
+  {k:"format",    label:"Response format"},
+];
+const EXTRA_BY_KEY = Object.fromEntries(EXTRA_SETTINGS.map(it=>[it.k,it]));
+// Keys that can never be per-model.
+const GLOBAL_ONLY_KEYS = EXTRA_SETTINGS.filter(it=>it.locked).map(it=>it.k);
+// Built-in classification. Anything not listed here defaults to per-model.
+const DEFAULT_GLOBAL_KEYS = new Set(["baseUrl","system","keepAlive"]);
+// Display order for the review dialog.
+const SCOPABLE_KEYS = [...EXTRA_SETTINGS.map(it=>it.k), ...SPEC_ITEMS.map(it=>it.k)];
+const isParamKey = k => Object.prototype.hasOwnProperty.call(SPEC_BY_KEY,k);
+function labelOf(k){ return (SPEC_BY_KEY[k]||EXTRA_BY_KEY[k]||{}).label || k; }
+
 /* ============ persistence (v3, migrates conversations from v2) ============ */
 const KEY = "localharness.v3";
-const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:"", keepAlive:"-1", format:"", model:"" };
+// params = the GLOBAL layer. modelParams = sparse per-model overrides, keyed by full model tag.
+// scope   = sparse user overrides of the built-in classification (key -> "global"|"model").
+const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:"", keepAlive:"-1", format:"", model:"", scope:{}, modelParams:{} };
 function durToSeconds(s){ const m=/^(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)?$/.exec(String(s).trim()); if(!m) return null; const mult={ns:1e-9,us:1e-6,"µs":1e-6,ms:1e-3,s:1,m:60,h:3600}[m[2]||"s"]; return Math.round(parseFloat(m[1])*mult); }
 function load(){
   try{ const v3=JSON.parse(localStorage.getItem(KEY));
     if(v3 && v3.settings){
       v3.settings={...DEFAULT_SETTINGS,...v3.settings};
       v3.settings.params={...defaultParams(),...(v3.settings.params||{})};
-      if(v3.settings.params.num_ctx==null) v3.settings.params.num_ctx=65536;
+      if(v3.settings.params.num_ctx==null) v3.settings.params.num_ctx=DEFAULT_NUM_CTX;
+      // Older blobs predate the layered model: their params become the global layer verbatim,
+      // per-model starts empty, so every model inherits exactly what it had before.
+      // Cloned, never aliased to DEFAULT_SETTINGS — these two get mutated in place.
+      v3.settings.scope = {...(v3.settings.scope||{})};
+      v3.settings.modelParams = {...(v3.settings.modelParams||{})};
       const ka=v3.settings.keepAlive;                                  // migrate old "5m"/"1h" → seconds
       if(typeof ka==="string" && ka.trim()!=="" && !/^-?\d+$/.test(ka.trim())){ const sec=durToSeconds(ka); v3.settings.keepAlive = sec==null?"300":String(sec); }
       return v3;
@@ -358,7 +413,7 @@ function load(){
   }catch{}
   let conversations={}, currentId=null;
   try{ const v2=JSON.parse(localStorage.getItem("localharness.v2")); if(v2 && v2.conversations){ conversations=v2.conversations; currentId=v2.currentId; } }catch{}
-  return { settings:{...DEFAULT_SETTINGS, params:defaultParams()}, conversations, currentId };
+  return { settings:{...DEFAULT_SETTINGS, params:defaultParams(), scope:{}, modelParams:{}}, conversations, currentId };
 }
 const state = load();
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ console.warn("Local storage save failed:", e); } }
@@ -462,6 +517,7 @@ async function loadModels(){
     const r=await fetch(base()+"/api/tags"); if(!r.ok) throw new Error("HTTP "+r.status);
     const data=await r.json();
     modelCache=(data.models||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+    reconcileModelLimits();   // fit newly pulled models to their own limits
     const names=modelCache.map(m=>m.name);
     els.model.innerHTML=names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
     const c=currentConv();
@@ -486,7 +542,7 @@ function updateThinkToggle(){
   btn.classList.toggle("on",on);
   btn.dataset.tip = `Thinking mode: ${on?"ON":"OFF"}\nThe model reasons before answering.`;
 }
-function ctxLimit(){ const n=state.settings.params.num_ctx; return (n!=null && n>0)?n:65536; }
+function ctxLimit(){ return effectiveNumCtx(els.model.value); }
 function updateCtxRing(){
   const ring=$("#ctxRing"); if(!ring) return;
   const path=pathOf(currentConv()); let used=0;
@@ -539,7 +595,7 @@ async function loadModel(name){
   try{
     // Must match the chat request's load-time options (num_ctx, num_gpu, ...) or Ollama
     // will unload this instance and reload a different one on the first message.
-    const body={model:name, stream:false, options:buildOptions()};
+    const body={model:name, stream:false, options:buildOptions(name)};
     const ka=parseKeepAlive(state.settings.keepAlive); if(ka.val!==undefined) body.keep_alive=ka.val;
     const r=await fetch(base()+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text()).slice(0,180));
@@ -676,9 +732,105 @@ els.scroll.addEventListener("touchmove",()=>{ if(els.scroll.scrollHeight-els.scr
 // covers scrollbar drag / keys: any upward move detaches; re-attach ONLY at the true bottom (not merely "near").
 els.scroll.addEventListener("scroll",()=>{ const t=els.scroll.scrollTop, dist=els.scroll.scrollHeight-t-els.scroll.clientHeight; if(dist<4) autostick=true; else if(t<lastTop-1) autostick=false; lastTop=t; });
 
+/* ============ setting scope & resolution ============
+   Reads always prefer a per-model override when one exists; `scope` decides only where
+   writes land. Flipping a key to global therefore purges its per-model overrides, so the
+   capsule means what it says: "applied for all the models in the picker". */
+function scopeOf(k){
+  if(GLOBAL_ONLY_KEYS.includes(k)) return "global";
+  const s=state.settings.scope[k];
+  return (s==="global"||s==="model") ? s : (DEFAULT_GLOBAL_KEYS.has(k) ? "global" : "model");
+}
+function globalValue(k){
+  const v = isParamKey(k) ? state.settings.params[k] : state.settings[k];
+  if(v!==undefined) return v;
+  return isParamKey(k) ? (SPEC_BY_KEY[k].def===undefined?null:SPEC_BY_KEY[k].def) : null;
+}
+function setGlobalValue(k,v){ if(isParamKey(k)) state.settings.params[k]=v; else state.settings[k]=v; }
+// Own-property lookup: model names and setting keys are external strings, so plain
+// obj[k] could otherwise resolve an inherited Object.prototype member.
+const has = (o,k) => !!o && Object.prototype.hasOwnProperty.call(o,k);
+function overridesFor(model){ return has(state.settings.modelParams,model) ? state.settings.modelParams[model] : null; }
+function hasOverride(model,k){ return has(overridesFor(model),k); }
+function setOverride(model,k,v){
+  if(!model) return;
+  let mp=overridesFor(model);
+  if(!mp) mp=state.settings.modelParams[model]={};
+  mp[k]=v;
+}
+// Drops a key's per-model overrides everywhere. Returns how many models were affected.
+function purgeKey(k){
+  let n=0;
+  for(const mp of Object.values(state.settings.modelParams)){ if(has(mp,k)){ delete mp[k]; n++; } }
+  return n;
+}
+function countOverrides(k){
+  let n=0;
+  for(const mp of Object.values(state.settings.modelParams)) if(has(mp,k)) n++;
+  return n;
+}
+function resolveSetting(k,model){
+  if(!GLOBAL_ONLY_KEYS.includes(k) && hasOverride(model,k)) return overridesFor(model)[k];
+  return globalValue(k);
+}
+function resolveParams(model){ const p={}; for(const it of SPEC_ITEMS) p[it.k]=resolveSetting(it.k,model); return p; }
+
+/* ============ per-model compatibility ============
+   Driven entirely by what /api/tags reports, so a model pulled later is handled with no
+   extra work. A missing/zero context_length means "unknown" — never clamp on a guess. */
+function modelEntry(name){ return modelCache.find(m=>m.name===name) || null; }
+function modelMaxCtxFor(name){
+  const m=modelEntry(name);
+  const n=m && m.details && Number(m.details.context_length);
+  return Number.isFinite(n) && n>0 ? n : 0;
+}
+const CONSTRAINTS = {
+  // key -> (value, modelEntry) => null | {fit, msg}
+  num_ctx(val,m){
+    const max = m && m.details && Number(m.details.context_length);
+    const v = Number(val);
+    if(!Number.isFinite(max) || max<=0) return null;      // unknown limit: leave alone
+    if(!Number.isFinite(v) || v<=max) return null;
+    return { fit:max, msg:`${m.name} supports at most ${max.toLocaleString()} tokens` };
+  },
+};
+// Which installed models cannot honor `value` for `key`.
+function fitToModels(key,value){
+  const rule = has(CONSTRAINTS,key) ? CONSTRAINTS[key] : null;
+  if(!rule || value==null) return [];
+  const out=[];
+  for(const m of modelCache){ const r=rule(value,m); if(r) out.push({model:m.name, fit:r.fit, msg:r.msg}); }
+  return out;
+}
+// Materialise a visible per-model override wherever an inherited global value is out of range.
+// Runs on every model-list refresh, so newly pulled models get fitted automatically.
+function reconcileModelLimits(){
+  let changed=false;
+  for(const key of Object.keys(CONSTRAINTS)){
+    const gv=globalValue(key);
+    for(const m of modelCache){
+      if(hasOverride(m.name,key)) continue;               // an explicit value is the user's call
+      const r=CONSTRAINTS[key](gv,m);
+      if(r){ setOverride(m.name,key,r.fit); changed=true; }
+    }
+  }
+  if(changed) save();
+  return changed;
+}
+// Final backstop: covers models that have no override yet (e.g. pulled since the last refresh).
+// An override the user typed themselves is honored — Ollama rope-scales past the trained
+// context — and is surfaced as an inline warning in the settings panel instead.
+function effectiveNumCtx(model){
+  let n=Number(resolveSetting("num_ctx",model));
+  if(!Number.isFinite(n)||n<=0) n=DEFAULT_NUM_CTX;
+  const max=modelMaxCtxFor(model);
+  if(max && n>max && !hasOverride(model,"num_ctx")) n=max;
+  return n;
+}
+
 /* ============ request options ============ */
-function buildOptions(){
-  const p=state.settings.params, o={};
+function buildOptions(modelName){
+  const p=resolveParams(modelName), o={};
   for(const it of SPEC_ITEMS){
     const v=p[it.k];
     if(it.type==="bool"){ o[it.k]=!!v; }
@@ -687,6 +839,11 @@ function buildOptions(){
     else if(it.type==="select"){ if(v!=null && !Number.isNaN(Number(v))) o[it.k]=Number(v); }
     else{ if(v==null||v===""||Number.isNaN(Number(v))) continue; const n=Number(v); if(it.k==="seed"&&n<0) continue; o[it.k]=n; }
   }
+  if(o.num_ctx!=null){
+    const max=modelMaxCtxFor(modelName);
+    if(max && o.num_ctx>max && !hasOverride(modelName,"num_ctx")) o.num_ctx=max;
+  }
+  if(o.num_keep!=null && o.num_ctx!=null && o.num_keep>=o.num_ctx) o.num_keep=Math.max(0,o.num_ctx-1);
   return o;
 }
 
@@ -705,10 +862,10 @@ async function generate(){
   const msgs=[];
   if(state.settings.system.trim()) msgs.push({role:"system",content:state.settings.system});
   for(const nd of pathOf(c)) msgs.push({role:nd.role,content:nd.content});
-  const payload={model:c.model, stream:true, messages:msgs, options:buildOptions()};
+  const payload={model:c.model, stream:true, messages:msgs, options:buildOptions(c.model)};
   if(modelCaps(c.model).includes("thinking")) payload.think=!!state.settings.think;  // avoid 400 on non-thinking models
   const ka=parseKeepAlive(state.settings.keepAlive); if(ka.val!==undefined) payload.keep_alive=ka.val;
-  if(state.settings.format) payload.format=state.settings.format;
+  const fmt=resolveSetting("format",c.model); if(fmt) payload.format=fmt;
 
   const assistant={content:"",thinking:"",meta:""};
   controller=new AbortController(); setBusy(true); let stats=null;
@@ -770,7 +927,7 @@ function revertTo(nodeId){
 }
 
 /* ============ settings form (spec-driven) ============ */
-function modelMaxCtx(){ const m=modelCache.find(x=>x.name===els.model.value); return m&&m.details&&m.details.context_length||0; }
+function modelMaxCtx(){ return modelMaxCtxFor(els.model.value); }
 function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
 function help(tip){ return tip?`<span class="help" data-tip="${escAttr(tip)}">?</span>`:""; }
 let formParamsSrc = null;  // params source the form is currently rendering from
@@ -783,7 +940,7 @@ function fieldHTML(it){
     if(max) presets.push(max);
     const chips=presets.map(p=>`<button type="button" class="chip" data-ctx="${p}">${p===max?"Max · ":""}${p>=1024?(p/1024)+"K":p}</button>`).join("");
     const mtip=(it.tip||"")+(max?` Model max: ${max.toLocaleString()} tokens.`:"");
-    ctrl=`<input type="number" step="256" min="256" id="p_${it.k}" value="${v==null?"":v}" placeholder="65536"><div class="presets">${chips}</div>`;
+    ctrl=`<input type="number" step="256" min="256" id="p_${it.k}" value="${v==null?"":v}" placeholder="${DEFAULT_NUM_CTX}"><div class="presets">${chips}</div><div class="hint ctxwarn" id="ctxwarn"></div>`;
     return `<div class="field"><label>${it.label}${help(mtip)}</label>${ctrl}</div>`;
   }
   if(it.type==="range"){ const cur=v==null?it.def:v; ctrl=`<div class="rangewrap"><input type="range" id="p_${it.k}" min="${it.min}" max="${it.max}" step="${it.step}" value="${cur}"><span class="val" id="v_${it.k}">${(+cur).toFixed(2)}</span></div>`; }
@@ -795,7 +952,7 @@ function fieldHTML(it){
   return `<div class="field">${lbl}${ctrl}</div>`;
 }
 function buildSettingsForm(src){
-  formParamsSrc = src || state.settings.params;
+  formParamsSrc = src || resolveParams(els.model.value);
   els.paramFields.innerHTML=OPTION_SPEC.map(g=>
     `<div class="set-group"><p class="gh">${g.group}</p>${g.note?`<p class="gnote">${g.note}</p>`:""}${g.items.map(fieldHTML).join("")}</div>`
   ).join("");
@@ -809,21 +966,32 @@ function buildSettingsForm(src){
   }
   // context preset chips
   const ctxInput=document.getElementById("p_num_ctx");
+  const warn=document.getElementById("ctxwarn");
   const markChips=()=>els.paramFields.querySelectorAll(".chip[data-ctx]").forEach(c=>c.classList.toggle("on",c.dataset.ctx===String(ctxInput&&ctxInput.value)));
-  els.paramFields.querySelectorAll(".chip[data-ctx]").forEach(b=>b.onclick=()=>{ ctxInput.value=b.dataset.ctx; markChips(); });
-  if(ctxInput){ ctxInput.addEventListener("input",markChips); markChips(); }
+  // An explicit value above the trained limit is allowed (Ollama rope-scales) but flagged.
+  const markWarn=()=>{
+    if(!warn||!ctxInput) return;
+    const max=modelMaxCtx(), v=parseInt(ctxInput.value,10);
+    const over = max && Number.isFinite(v) && v>max;
+    warn.style.display = over?"block":"none";
+    if(over) warn.textContent=`Above ${els.model.value}'s trained limit of ${max.toLocaleString()} tokens. Ollama will still run it, using more memory and possibly reducing quality.`;
+  };
+  els.paramFields.querySelectorAll(".chip[data-ctx]").forEach(b=>b.onclick=()=>{ ctxInput.value=b.dataset.ctx; markChips(); markWarn(); });
+  if(ctxInput){ ctxInput.addEventListener("input",()=>{ markChips(); markWarn(); }); markChips(); markWarn(); }
 }
 function openSettings(){
-  const s=state.settings;
+  const s=state.settings, model=els.model.value;
   $("#s_base").value=s.baseUrl; $("#s_system").value=s.system;
-  $("#s_keepalive").value=s.keepAlive; $("#s_format").value=s.format;
-  buildSettingsForm();
+  $("#s_keepalive").value=s.keepAlive;
+  $("#s_format").value=resolveSetting("format",model)||"";
+  $("#setModel").textContent=model||"";
+  buildSettingsForm(resolveParams(model));
   els.settings.classList.add("open"); els.overlay.classList.add("open");
 }
 function readParams(){
   const p={};
   for(const it of SPEC_ITEMS){
-    const el=document.getElementById("p_"+it.k); if(!el){ p[it.k]=state.settings.params[it.k]; continue; }
+    const el=document.getElementById("p_"+it.k); if(!el){ p[it.k]=resolveSetting(it.k,els.model.value); continue; }
     if(it.type==="range") p[it.k]=Number(el.value);
     else if(it.type==="int"||it.type==="ctx"){ const n=parseInt(el.value,10); p[it.k]= (el.value.trim()===""||Number.isNaN(n))?null:n; }
     else if(it.type==="float"){ const n=Number(el.value); p[it.k]= (el.value.trim()===""||Number.isNaN(n))?null:n; }
@@ -835,11 +1003,14 @@ function readParams(){
   return p;
 }
 // Generic modal: buttons=[{label,value,primary?,cancel?}] → resolves with chosen value.
-function dialog(title, message, buttons){
+// `build` optionally populates the message body and returns a cleanup-free DOM subtree.
+function dialog(title, message, buttons, opts){
   return new Promise(res=>{
-    $("#cf-title").textContent=title; $("#cf-msg").innerHTML=message;
+    const m=$("#confirm"), card=m.querySelector(".modal-card"), msg=$("#cf-msg");
+    $("#cf-title").textContent=title;
+    card.classList.toggle("wide", !!(opts&&opts.wide));
+    if(opts&&opts.build){ msg.innerHTML=""; opts.build(msg); } else { msg.innerHTML=message; }
     const act=$("#cf-actions"); act.innerHTML="";
-    const m=$("#confirm");
     const done=v=>{ m.classList.remove("open"); m._cancel=null; res(v); };
     buttons.forEach(b=>{ const el=document.createElement("button"); el.className="btn"+(b.primary?" primary":""); el.textContent=b.label; el.onclick=()=>done(b.value); act.appendChild(el); });
     const cb=buttons.find(b=>b.cancel); m._cancel=()=>done(cb?cb.value:null);
@@ -847,6 +1018,109 @@ function dialog(title, message, buttons){
   });
 }
 const normv = v => (v===undefined?null:v);
+
+/* ============ change review ============ */
+function sameValue(k,a,b){
+  const it=SPEC_BY_KEY[k];
+  if(it && it.type==="list") return JSON.stringify(a||[])===JSON.stringify(b||[]);
+  return normv(a)===normv(b);
+}
+// Human-readable value for the review list.
+function fmtVal(k,v){
+  const it=SPEC_BY_KEY[k];
+  if(it){
+    if(it.type==="tri") return v==null?"Auto":(v?"On":"Off");
+    if(it.type==="bool") return v?"On":"Off";
+    if(it.type==="list") return (Array.isArray(v)&&v.length)?v.join(" / "):"—";
+    if(v==null||v==="") return "—";
+    if(it.type==="select"){ const o=(it.options||[]).find(x=>String(x[0])===String(v)); return o?o[1]:String(v); }
+    if(it.type==="range") return Number(v).toFixed(2);
+    return String(v);
+  }
+  if(v==null||v==="") return k==="format"?"Text":"—";
+  if(k==="format") return v==="json"?"JSON":"Text";
+  const s=String(v).replace(/\s+/g," ").trim();
+  return s.length>36?s.slice(0,36)+"…":s;
+}
+// One row per scopable setting: current value for this model vs what the form now holds.
+function buildRows(f,model){
+  return SCOPABLE_KEYS.map(k=>{
+    const to = isParamKey(k) ? f.params[k] : f[k];
+    const from = resolveSetting(k,model);
+    return { key:k, from, to, scope:scopeOf(k), changed:!sameValue(k,to,from) };
+  });
+}
+function rowsToApply(rows){ return rows.filter(r=>r.changed || r.scope!==scopeOf(r.key)); }
+
+// Renders one setting: label, value (or old → new), and its scope capsule.
+// Flipping the capsule mutates `row.scope` in place and refreshes the consequence note.
+function reviewRow(row,showChange){
+  const el=document.createElement("div"); el.className="rev-row";
+  const lbl=document.createElement("div"); lbl.className="rl"; lbl.textContent=labelOf(row.key);
+  const val=document.createElement("div"); val.className="rv";
+  if(showChange) val.innerHTML=`${esc(fmtVal(row.key,row.from))} → <b>${esc(fmtVal(row.key,row.to))}</b>`;
+  else val.textContent=fmtVal(row.key,row.from);
+  const locked=GLOBAL_ONLY_KEYS.includes(row.key);
+  const cap=document.createElement("div"); cap.className="scap"+(locked?" locked":"");
+  cap.innerHTML=locked
+    ? `<button type="button" class="on">Global</button>`
+    : `<button type="button" data-s="global">Global</button><button type="button" data-s="model">This model</button>`;
+  el.append(lbl,val,cap);
+
+  const note=document.createElement("div"); note.className="rev-note";
+  const sync=()=>{
+    cap.querySelectorAll("[data-s]").forEach(b=>b.classList.toggle("on",b.dataset.s===row.scope));
+    const msgs=[]; let warn=false;
+    if(row.scope==="global" && !locked){
+      const n=countOverrides(row.key);
+      if(n) msgs.push(`Clears the saved value for ${n} model${n===1?"":"s"}.`);
+      for(const v of fitToModels(row.key,row.to)){ msgs.push(`${v.msg} — saved as ${v.fit.toLocaleString()} for it.`); warn=true; }
+    }
+    note.textContent=msgs.join(" ");
+    note.classList.toggle("warn",warn);
+    note.style.display=msgs.length?"block":"none";
+  };
+  cap.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{ row.scope=b.dataset.s; sync(); });
+  sync();
+
+  const frag=document.createDocumentFragment();
+  frag.append(el,note);
+  return frag;
+}
+function reviewDialog(rows,model){
+  const changed=rows.filter(r=>r.changed), rest=rows.filter(r=>!r.changed);
+  const build=box=>{
+    if(changed.length){
+      const h=document.createElement("p"); h.className="rev-group"; h.textContent="Changed";
+      box.appendChild(h);
+      changed.forEach(r=>box.appendChild(reviewRow(r,true)));
+    }
+    if(rest.length){
+      const d=document.createElement("details"); d.className="rev-more";
+      d.innerHTML=`<summary>Show all settings (${rest.length})</summary>`;
+      const inner=document.createElement("div");
+      rest.forEach(r=>inner.appendChild(reviewRow(r,false)));
+      d.appendChild(inner);
+      box.appendChild(d);
+    }
+    if(!modelCache.length){
+      const p=document.createElement("p"); p.className="rev-note warn"; p.style.display="block";
+      p.textContent="Model list unavailable — per-model limits could not be verified.";
+      box.appendChild(p);
+    }
+  };
+  const buttons = needsReloadChoice(rows)
+    ? [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
+    : [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save",value:"save",primary:true} ];
+  return dialog(`Review changes — ${model||"no model"}`, "", buttons, {wide:true, build});
+}
+// "Save & reload now" reloads the selected model, so the choice is only worth offering when
+// that model is loaded and a load-time option is actually changing for it. Either scope
+// changes its effective value: a per-model write targets it, and a global write purges the
+// per-model copy that would otherwise have masked the new value.
+function needsReloadChoice(rows){
+  return isLoaded() && rowsToApply(rows).some(r=>LOAD_TIME_KEYS.includes(r.key));
+}
 
 function readForm(){
   return { baseUrl:normalizeBase($("#s_base").value), system:$("#s_system").value,
@@ -858,45 +1132,53 @@ function validateForm(f){
   if(f.params.num_ctx!=null && f.params.num_ctx<1) e.push("Context window must be at least 1 token.");
   return e;
 }
-function formChanged(f){
-  const s=state.settings;
-  if(f.baseUrl!==s.baseUrl||f.system!==s.system||f.keepAlive!==s.keepAlive||f.format!==s.format) return true;
-  for(const it of SPEC_ITEMS){
-    const a=f.params[it.k], b=s.params[it.k];
-    if(it.type==="list"){ if(JSON.stringify(a||[])!==JSON.stringify(b||[])) return true; }
-    else if(normv(a)!==normv(b)) return true;
+// Writes each row to the layer its capsule selected. Scope choices are sticky, so the
+// classification survives closing and reopening the panel.
+function commitRows(rows,model){
+  for(const r of rowsToApply(rows)){
+    if(r.scope==="global"){
+      setGlobalValue(r.key,r.to);
+      purgeKey(r.key);        // global means global: stale per-model copies would mask it
+    }else{
+      setOverride(model,r.key,r.to);
+    }
+    if(!GLOBAL_ONLY_KEYS.includes(r.key)) state.settings.scope[r.key]=r.scope;
   }
-  return false;
-}
-function commit(f){
-  const s=state.settings;
-  s.baseUrl=f.baseUrl; s.system=f.system; s.keepAlive=f.keepAlive; s.format=f.format; s.params=f.params;
+  reconcileModelLimits();     // re-fit anything a new global value put out of range
   save();
 }
 function doClose(){ els.settings.classList.remove("open"); els.overlay.classList.remove("open"); $("#setErr").style.display="none"; }
 async function closeSettings(){
+  const model=els.model.value;
   const f=readForm();
   const errs=validateForm(f), errBox=$("#setErr");
   if(errs.length){ errBox.style.display="block"; errBox.innerHTML=errs.map(esc).join("<br>"); errBox.scrollIntoView({block:"nearest"}); return; }
   errBox.style.display="none";
-  if(!formChanged(f)){ doClose(); return; }
-  // 3-way choice only makes sense when a reload is actually needed: a load-time option changed AND a model is loaded.
-  const loadTimeChanged = isLoaded() && LOAD_TIME_KEYS.some(k=>normv(f.params[k])!==normv(state.settings.params[k]));
-  const buttons = loadTimeChanged
-    ? [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
-    : [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Save",value:"save",primary:true} ];
-  const choice=await dialog("Apply settings?", `You changed settings for <b>${esc(els.model.value||"the model")}</b>.`, buttons);
-  if(choice==="cancel"){ doClose(); return; }        // revert everything (nothing was committed)
-  commit(f); doClose(); updateCtxRing();
+  const rows=buildRows(f,model);
+  if(!rows.some(r=>r.changed)){ doClose(); return; }
+  const choice=await reviewDialog(rows,model);
+  if(choice==="cancel"||choice==null){ doClose(); return; }   // nothing was committed
+  commitRows(rows,model); doClose(); updateCtxRing();
   await loadModels();
-  if(choice==="reload") await loadModel(els.model.value);   // apply load-time options immediately
+  if(choice==="reload") await loadModel(els.model.value);     // apply load-time options immediately
 }
-function resetForm(){
-  $("#s_system").value=""; $("#s_keepalive").value="-1"; $("#s_format").value="";
-  const defaults = defaultParams();
-  defaults.num_ctx = 65536;
-  defaults.num_predict = -1;
-  buildSettingsForm(defaults);
+// Factory reset: global layer back to defaults, every per-model override dropped, and the
+// built-in Global/Per-model classification restored. The base URL is left alone so a reset
+// can't disconnect the app from a non-default Ollama.
+async function resetSettings(){
+  const n=modelCache.length;
+  const who = n ? `all ${n} model${n===1?"":"s"}` : "all models";
+  const choice=await dialog("Reset to defaults",
+    `This clears saved settings for ${who} and restores the default Global / Per-model classification.<br><br>Your conversations are kept.`,
+    [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Reset everything",value:"reset",primary:true} ]);
+  if(choice!=="reset") return;
+  const s=state.settings;
+  s.params=defaultParams(); s.system=""; s.keepAlive="-1"; s.format="";
+  s.modelParams={}; s.scope={};
+  save();
+  reconcileModelLimits();
+  openSettings();          // repopulate the form from the fresh state
+  updateCtxRing();
   $("#setErr").style.display="none";
 }
 
@@ -949,7 +1231,12 @@ function submit(){
 }
 els.send.addEventListener("click",()=>{ controller ? controller.abort() : submit(); });
 els.newChat.addEventListener("click",()=>{ if(controller) controller.abort(); newConversation(); openConversation(); els.input.focus(); });
-els.model.addEventListener("change",()=>{ const c=currentConv(); c.model=els.model.value; state.settings.model=els.model.value; save(); updateCap(); updateLoadUI(); });
+els.model.addEventListener("change",()=>{
+  const c=currentConv(); c.model=els.model.value; state.settings.model=els.model.value; save();
+  updateCap(); updateLoadUI(); updateCtxRing();
+  // The panel shows values for the selected model, so repopulate it from the new model's layer.
+  if(els.settings.classList.contains("open")) openSettings();
+});
 els.loadBtn.addEventListener("click",()=>{ const n=els.model.value; if(loadingName||ejectingName) return; isLoaded()?ejectModel(n):loadModel(n); });
 $("#thinkBtn").addEventListener("click",()=>{ state.settings.think=!state.settings.think; save(); updateThinkToggle(); });
 $("#composeCancel").addEventListener("click",()=>{ if(!compose) return; const c=currentConv(); const r=compose.restoreLeaf; compose=null; if(r) setLeaf(c,r); save(); els.input.value=""; els.input.dispatchEvent(new Event("input")); openConversation(); });
@@ -958,7 +1245,7 @@ els.showSidebar.addEventListener("click",()=>{ els.sidebar.classList.remove("col
 els.settingsBtn.addEventListener("click",openSettings);
 els.closeSettings.addEventListener("click",closeSettings);
 els.overlay.addEventListener("click",()=>{ if($("#ctxeditor").classList.contains("open")) closeContext(); else closeSettings(); });
-$("#resetSettings").addEventListener("click",resetForm);
+$("#resetSettings").addEventListener("click",resetSettings);
 $("#ctxBtn").addEventListener("click",openContext);
 $("#ctxClose").addEventListener("click",closeContext);
 $("#ctxCancel").addEventListener("click",closeContext);
