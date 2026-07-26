@@ -1140,9 +1140,10 @@ function buildRows(f,model){
     return { key:k, from, to, scope:scopeOf(k), changed:!sameValue(k,to,from) };
   });
 }
-// The same shape of rows, but describing a reset to defaults rather than form edits. Scopes are
-// locked because a reset restores the built-in classification by definition. The base URL is
-// left out of the reset so it cannot disconnect the app from a non-default Ollama.
+// The same shape of rows, but describing a reset to defaults rather than form edits. Marked
+// `bare`: a reset restores the built-in classification and every value at once, so neither the
+// scope nor the outgoing value is a decision to present. The base URL is left out of the reset
+// so it cannot disconnect the app from a non-default Ollama.
 function buildResetRows(model){
   const defs=defaultParams();
   return SCOPABLE_KEYS.map(k=>{
@@ -1150,26 +1151,34 @@ function buildResetRows(model){
              : isParamKey(k) ? defs[k]
              : DEFAULT_SETTINGS[k];
     const from = resolveSetting(k,model);
-    return { key:k, from, to, scope:baseScopeOf(k), locked:true, changed:!sameValue(k,to,from) };
+    return { key:k, from, to, bare:true, changed:!sameValue(k,to,from) };
   });
 }
 // Only settings the user actually changed are reviewable, so an untouched setting can never
 // have its scope flipped and never needs writing.
 function changedRows(rows){ return rows.filter(r=>r.changed); }
 
-// Renders one changed setting: label, old -> new, and its scope capsule.
-// Flipping the capsule mutates `row.scope` in place and refreshes the consequence note.
+// Renders one changed setting. An edit row shows old -> new plus a scope capsule, and flipping
+// the capsule mutates `row.scope` in place and refreshes the consequence note. A `bare` row
+// (a reset) shows only the value it lands on.
 function reviewRow(row){
   const el=document.createElement("div"); el.className="rev-row";
   const lbl=document.createElement("div"); lbl.className="rl"; lbl.textContent=labelOf(row.key);
   const val=document.createElement("div"); val.className="rv";
-  val.innerHTML=`${esc(fmtVal(row.key,row.from))} → <b>${esc(fmtVal(row.key,row.to))}</b>`;
-  const locked = row.locked || GLOBAL_ONLY_KEYS.includes(row.key);
+  val.innerHTML = row.bare
+    ? `<b>${esc(fmtVal(row.key,row.to))}</b>`
+    : `${esc(fmtVal(row.key,row.from))} → <b>${esc(fmtVal(row.key,row.to))}</b>`;
+  el.append(lbl,val);
+  const item=document.createElement("div"); item.className="rev-item";
+  item.appendChild(el);
+  if(row.bare) return item;
+
+  const locked = GLOBAL_ONLY_KEYS.includes(row.key);
   const cap=document.createElement("div"); cap.className="scap"+(locked?" locked":"");
   cap.innerHTML=locked
-    ? `<button type="button" class="on">${row.scope==="global"?"Global":"This model"}</button>`
+    ? `<button type="button" class="on">Global</button>`
     : `<button type="button" data-s="global">Global</button><button type="button" data-s="model">This model</button>`;
-  el.append(lbl,val,cap);
+  el.appendChild(cap);
 
   const note=document.createElement("div"); note.className="rev-note";
   const sync=()=>{
@@ -1186,9 +1195,7 @@ function reviewRow(row){
   };
   cap.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{ row.scope=b.dataset.s; sync(); });
   sync();
-
-  const item=document.createElement("div"); item.className="rev-item";
-  item.append(el,note);
+  item.appendChild(note);
   return item;
 }
 // `reset` swaps the wording and adds the across-all-models warning. The button set is chosen the
