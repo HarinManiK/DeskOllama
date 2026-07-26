@@ -184,6 +184,27 @@
   .send-btn:disabled{opacity:.3;cursor:not-allowed}
   .send-btn.stop{background:var(--danger);color:#fff;opacity:1;cursor:pointer}
   .foot-note{text-align:center;font-size:12px;color:var(--muted);margin-top:8px}
+  /* Queued messages, next to send at the top. */
+  #queueList{max-width:768px;margin:0 auto}
+  #queueList:not(:empty){margin-bottom:8px}
+  .qrow{display:flex;align-items:flex-start;gap:8px;background:var(--panel-2);border:1px solid var(--border);
+    border-radius:10px;padding:7px 8px 7px 12px;margin-bottom:6px;font-size:13px;color:var(--txt-dim)}
+  .qrow[draggable=true]{cursor:grab}
+  .qrow.dragging{opacity:.4}
+  .qrow.over{border-color:var(--primary)}
+  .qrow.editing{border-color:var(--primary);cursor:default}
+  .qrow .qtext{flex:1;min-width:0;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .qrow textarea{flex:1;resize:none;overflow:hidden;background:transparent;border:none;padding:0;
+    font-size:13px;line-height:1.45;min-height:0}
+  .qrow textarea:focus{border:none;outline:none}
+  .qrow .qacts{display:flex;gap:2px;flex:0 0 auto;opacity:0;transition:.12s}
+  .qrow:hover .qacts,.qrow.editing .qacts{opacity:1}
+  .qrow .qacts button{width:24px;height:24px;display:grid;place-items:center;border-radius:6px;color:var(--muted)}
+  .qrow .qacts button:hover{background:var(--border);color:var(--txt)}
+  .qhalt{max-width:768px;margin:0 auto 6px;font-size:12px;color:#eab308;display:flex;align-items:center;gap:8px}
+  .qhalt button{margin-left:auto;color:var(--txt-dim);font-weight:600;font-size:12px;padding:3px 8px;border-radius:6px}
+  .qhalt button:hover{background:var(--border);color:var(--txt)}
   #composeBar{max-width:768px;margin:0 auto 8px;display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--txt-dim);background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:7px 12px}
   #composeBar button{margin-left:auto;color:var(--danger);font-weight:600;font-size:12px;padding:3px 8px;border-radius:6px}
   #composeBar button:hover{background:var(--border)}
@@ -298,6 +319,7 @@
   <div id="scroll"><div class="thread" id="thread"><div class="empty" id="empty">What can I help with?</div></div></div>
 
   <div class="composer-wrap">
+    <div id="queueList"></div>
     <div id="composeBar" style="display:none"><span>Reverted. Type and send to branch from here.</span><button id="composeCancel">Cancel</button></div>
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
@@ -796,12 +818,12 @@ function isLoaded(){ return loadedModels.has(els.model.value); }
 // The only thing that can still block typing is having no models installed at all.
 function updateGate(){
   els.input.placeholder = modelCache.length ? "Message your model…" : "Install a model to start chatting…";
-  if(!controller && !sending) els.send.disabled = !els.model.value || !els.input.value.trim();
+  syncSendButton();
   renderEmpty();
 }
 function renderEmpty(){
   const c=currentConv();
-  if(pathOf(c).length || compose){ els.empty.style.display="none"; return; }
+  if(pathOf(c).length || compose || queueOf(c).length){ els.empty.style.display="none"; return; }
   els.empty.style.display="block";
   const cur=els.model.value;
   if(loadingName===cur){
@@ -910,6 +932,7 @@ function openConversation(){
     live.dom=dom;
   }
   $("#composeBar").style.display = compose ? "flex" : "none";
+  renderQueue();
   updateLoadUI(); updateCtxRing(); scrollBottom();
 }
 let autostick=true, lastTop=1e9;   // follow the stream only while the user is parked at the bottom
@@ -1047,32 +1070,42 @@ let controller=null;
 let sending=false;   // true while a send/regenerate is waiting on load-on-send
 let live=null;   // {convId, dom, assistant} while a reply is streaming, so a chat switch can re-attach it
 const ICON_SEND='<path d="M12 19V5M5 12l7-7 7 7"/>', ICON_STOP='<rect x="6" y="6" width="12" height="12" rx="2"/>';
+// One button, two jobs, and the composer decides which. Typed something and it sends, because
+// that is plainly what you meant even mid-reply: the message queues. Empty while the model is
+// working and it stops. Esc always stops, so there is an unambiguous way out either way.
+function isStopMode(){ return (!!controller || sending) && !els.input.value.trim(); }
+function syncSendButton(){
+  const stop=isStopMode();
+  els.send.classList.toggle("stop",stop);
+  els.send.dataset.tip = stop ? (controller?"Stop generating (Esc)":"Cancel loading (Esc)") : "Send";
+  els.sendIcon.innerHTML = stop ? ICON_STOP : ICON_SEND;
+  els.send.disabled = stop ? false : (!els.model.value || !els.input.value.trim());
+}
 function setBusy(on){
-  els.send.classList.toggle("stop",on);
-  els.send.dataset.tip = on ? "Stop generating (Esc)" : "Send";
-  els.sendIcon.innerHTML=on?ICON_STOP:ICON_SEND;
-  els.send.disabled=on?false:(!els.model.value||!els.input.value.trim());
+  syncSendButton();
   els.model.disabled=on; els.loadBtn.disabled=on;
 }
-// Load-on-send in progress: the button becomes a cancel, and the text stays put in the input
-// so a failed or cancelled load never eats the message.
+// Load-on-send in progress. The composer deliberately stays live: a message typed now joins
+// the queue rather than being swallowed.
 function setSendLoading(on){
-  els.input.disabled=on;
-  els.send.classList.toggle("stop",on);
-  els.send.dataset.tip = on ? "Cancel loading (Esc)" : "Send";
-  els.sendIcon.innerHTML=on?ICON_STOP:ICON_SEND;
-  els.send.disabled=false;
   els.model.disabled=on;
+  syncSendButton();
   if(!on) updateGate();
 }
-async function generate(){
-  const c=currentConv();
+// Generates a reply into `c`, which is not necessarily the chat on screen: the queue keeps
+// draining into the chat a message was typed in even after you have moved on. Returns
+// "ok" | "aborted" | "error" so the drain loop knows whether to carry on.
+async function generate(c){
   const parentId=c.leafId;   // the assistant reply attaches under the current leaf (last user node)
-  const dom=rowNode("assistant"); els.thread.appendChild(dom.row); dom.content.classList.add("cursor"); autostick=true; scrollBottom();
+  const dom=rowNode("assistant");
+  // Only mount the row when this chat is on screen. Left detached otherwise, and
+  // openConversation() re-attaches the stream to a fresh row if you come back mid-reply.
+  if(c.id===state.currentId){ els.thread.appendChild(dom.row); dom.content.classList.add("cursor"); autostick=true; scrollBottom(); }
   const assistant={content:"",thinking:"",meta:""};
   // Switching chats re-renders the thread and would drop this row, so the stream is tracked
   // here and openConversation() re-attaches it to a fresh row when the chat comes back.
   live={convId:c.id, dom, assistant};
+  let status="ok";
   const msgs=[];
   const sys=convSystem(c);   // this chat's own override, else the layered setting
   if(sys.trim()) msgs.push({role:"system",content:sys});
@@ -1113,37 +1146,186 @@ async function generate(){
   }catch(err){
     live.dom.content.classList.remove("cursor");
     if(err.name==="AbortError"){
+      status="aborted";
       if(assistant.content||assistant.thinking){ commit(); live.dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--muted);font-size:13px;margin-top:6px">⏹ stopped</p>`; }
       else live.dom.row.remove();
     }else if(assistant.content||assistant.thinking){
+      status="error";
       commit(); live.dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(err.message)}</p>`;
-    }else{ live.dom.content.innerHTML=`<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
+    }else{ status="error"; live.dom.content.innerHTML=`<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
   }finally{ live=null; controller=null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); els.input.focus(); }
+  // A stop the user asked for winds the prompt back into the composer. An abort from losing
+  // the tab lock does not: that tab is parking, and there is nobody to hand it back to.
+  if(status==="aborted" && stopByUser){ stopByUser=false; rewindAfterStop(c,parentId); }
+  return status;
 }
-function sendUserMessage(text){
-  const c=currentConv();
-  const parentId = compose ? compose.parentId : c.leafId; compose=null;
-  addNode(c, parentId, "user", text); touch(c); save();
-  openConversation(); generate();
+/* ============ message queue ============
+   Messages typed while the model is busy wait in a per-chat queue rather than being refused.
+   The queue belongs to the conversation, so switching chats never carries a pending message
+   somewhere it was not typed, and a reply lands in the chat that asked for it.
+
+   The drain is strictly FIFO and strictly one at a time. Anything that means "the user is
+   still deciding" holds the whole queue: an open edit, a drag in progress, a rewound prompt
+   sitting in the composer, or a failure worth noticing. Nothing later jumps ahead. */
+let queueEditing=null;   // id of the row being edited
+let queueDragging=false;
+let queueHalted=false;   // an error stopped the drain; sending or editing clears it
+let queueHaltMsg="";     // why, in the words shown above the rows
+let draining=false;
+let drainTarget=null;    // finish one chat's queue before starting another's
+let stopByUser=false;    // distinguishes a Stop press from an abort we did to ourselves
+const queueOf = c => (Array.isArray(c.queue) ? c.queue : (c.queue=[]));
+function halt(msg){ queueHalted=true; queueHaltMsg=msg; }
+function resumeQueue(){ queueHalted=false; queueHaltMsg=""; }
+function enqueue(c,text,front){
+  const item={id:uid(), text};
+  front ? queueOf(c).unshift(item) : queueOf(c).push(item);
+  touch(c); save(); return item;
+}
+function canDrain(){
+  return !queueEditing && !queueDragging && !queueHalted && !compose
+      && !controller && !sending && !loadingName;
+}
+// Prefer the chat already draining so one queue finishes in order before another starts.
+function nextQueued(){
+  const prefer=state.conversations[drainTarget];
+  if(prefer && queueOf(prefer).length) return prefer;
+  const cur=state.conversations[state.currentId];
+  if(cur && queueOf(cur).length) return cur;
+  return sortedConvs().reverse().find(c=>queueOf(c).length) || null;
+}
+async function drainQueue(){
+  if(draining) return;
+  draining=true;
+  try{
+    while(canDrain()){
+      const c=nextQueued(); if(!c) break;
+      drainTarget=c.id;
+      const item=queueOf(c).shift();
+      // Posted before the model is loaded, so the message is anchored to the chat it was
+      // typed in from the moment you press send.
+      const un=addNode(c, c.leafId, "user", item.text);
+      touch(c); save(); renderQueue();
+      if(c.id===state.currentId) openConversation();
+      const ok=await awaitLoad(c);
+      if(!ok){
+        // Undo the post and put it back at the head, so a failed load leaves the message
+        // pending rather than stranded under a chat with no reply coming.
+        delete c.nodes[un.id]; setLeaf(c, un.parentId);
+        queueOf(c).unshift(item); halt("The model could not be loaded."); save();
+        if(c.id===state.currentId) openConversation(); else renderQueue();
+        break;
+      }
+      // One failure stops the run. Letting it carry on would burn the whole queue producing
+      // the same error five times over.
+      if(await generate(c)==="error"){ halt("Paused after an error."); break; }
+    }
+  }finally{ draining=false; renderQueue(); }
+}
+const ICON_PENCIL='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const ICON_X='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+// The queue shown belongs to the chat on screen. Another chat's queue keeps draining in the
+// background; it is just not this chat's business to display it.
+function renderQueue(){
+  const box=$("#queueList"); if(!box) return;
+  box.innerHTML="";
+  const c=state.conversations[state.currentId]; if(!c) return;
+  const q=queueOf(c);
+  if(queueHalted && q.length){
+    const h=document.createElement("div"); h.className="qhalt";
+    h.innerHTML=`<span>${esc(queueHaltMsg||"Paused.")} ${q.length} message${q.length===1?"":"s"} queued.</span>`;
+    const b=document.createElement("button"); b.textContent="Resume";
+    b.onclick=()=>{ resumeQueue(); renderQueue(); drainQueue(); };
+    h.appendChild(b); box.appendChild(h);
+  }
+  q.forEach((item,i)=>box.appendChild(queueRow(c,item,i)));
+  renderEmpty();   // a pending queue means the chat is no longer "empty"
+}
+function queueRow(c,item,index){
+  const row=document.createElement("div");
+  row.className="qrow"+(queueEditing===item.id?" editing":"");
+  if(queueEditing===item.id){
+    const ta=document.createElement("textarea");
+    ta.value=item.text;
+    const commit=()=>{
+      const v=ta.value.trim();
+      queueEditing=null;
+      if(v) item.text=v; else queueOf(c).splice(queueOf(c).indexOf(item),1);   // emptied means dropped
+      touch(c); save(); renderQueue(); drainQueue();
+    };
+    ta.addEventListener("input",()=>autosizeTa(ta));
+    ta.addEventListener("keydown",e=>{
+      if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); commit(); }
+      else if(e.key==="Escape"){ e.preventDefault(); e.stopPropagation(); queueEditing=null; renderQueue(); drainQueue(); }
+    });
+    ta.addEventListener("blur",commit);
+    row.appendChild(ta);
+    requestAnimationFrame(()=>{ autosizeTa(ta); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); });
+    return row;
+  }
+  row.draggable=true;
+  const txt=document.createElement("div"); txt.className="qtext"; txt.textContent=item.text; txt.title=item.text;
+  const acts=document.createElement("div"); acts.className="qacts";
+  const mk=(title,icon,fn)=>{ const b=document.createElement("button"); b.title=title; b.innerHTML=icon; b.onclick=fn; return b; };
+  acts.append(
+    // Opening an edit is also the way to say "hold on": the drain waits for it to close.
+    mk("Edit",ICON_PENCIL,()=>{ queueEditing=item.id; resumeQueue(); renderQueue(); }),
+    mk("Remove",ICON_X,()=>{ queueOf(c).splice(queueOf(c).indexOf(item),1); touch(c); save(); renderQueue(); drainQueue(); })
+  );
+  row.append(txt,acts);
+
+  row.addEventListener("dragstart",e=>{
+    queueDragging=true; row.classList.add("dragging");
+    e.dataTransfer.effectAllowed="move";
+    e.dataTransfer.setData("text/plain",String(index));
+  });
+  row.addEventListener("dragend",()=>{ queueDragging=false; row.classList.remove("dragging"); renderQueue(); drainQueue(); });
+  row.addEventListener("dragover",e=>{ e.preventDefault(); e.dataTransfer.dropEffect="move"; row.classList.add("over"); });
+  row.addEventListener("dragleave",()=>row.classList.remove("over"));
+  row.addEventListener("drop",e=>{
+    e.preventDefault(); row.classList.remove("over");
+    const from=parseInt(e.dataTransfer.getData("text/plain"),10);
+    const q=queueOf(c);
+    if(Number.isNaN(from) || from===index || from<0 || from>=q.length) return;
+    q.splice(index,0,q.splice(from,1)[0]);
+    touch(c); save(); renderQueue();
+  });
+  return row;
+}
+// Stop winds the chat back to just before the prompt, exactly like "Revert to here". The
+// partial reply stays committed on the abandoned branch, reachable from the branch switcher
+// once you send again, and the prompt lands in the composer ready to edit.
+function rewindAfterStop(c,userNodeId){
+  const un=c.nodes[userNodeId]; if(!un || un.role!=="user") return;
+  compose={parentId:un.parentId, restoreLeaf:c.leafId};
+  setLeaf(c, un.parentId); touch(c); save();
+  if(c.id!==state.currentId) return;   // rewound in the background; the text is still in the tree
+  openConversation();
+  els.input.value=un.content; els.input.dispatchEvent(new Event("input"));
+  els.input.focus(); els.input.setSelectionRange(un.content.length,un.content.length);
 }
 async function regenerate(assistantNodeId){
   if(controller || sending) return;
   const c=currentConv(); if(!c.nodes[assistantNodeId]) return;
   if(!await awaitLoad(c)) return;
   // Re-resolve after the await: the node could have gone while the model was loading.
-  const an=c.nodes[assistantNodeId]; if(!an || state.currentId!==c.id) return;
-  compose=null; setLeaf(c, an.parentId); save(); openConversation(); generate();   // new assistant grows as a sibling
+  const an=c.nodes[assistantNodeId]; if(!an) return;
+  compose=null; setLeaf(c, an.parentId); save();
+  if(c.id===state.currentId) openConversation();
+  await generate(c);            // new assistant grows as a sibling
+  drainQueue();
 }
 // Shared by send and regenerate: make `c.model` resident, showing the cancellable loading
-// state while it happens. False means don't proceed (failed, cancelled, or the user moved on).
+// state while it happens. False means the load failed or was cancelled. Moving to another
+// chat is deliberately not a failure: the reply belongs to `c` either way.
 async function awaitLoad(c){
   if(loadedModels.has(c.model)) return true;
   sending=true; setSendLoading(true);
   let ok=false;
   try{ ok=await ensureLoaded(c.model); }
   finally{ sending=false; setSendLoading(false); }
-  if(!ok){ els.input.focus(); return false; }
-  return state.currentId===c.id;
+  if(!ok) els.input.focus();
+  return ok;
 }
 function revertTo(nodeId){
   if(controller) return;
@@ -1682,19 +1864,28 @@ function saveContext(){
 /* ============ events ============ */
 els.input.addEventListener("input",()=>{
   els.input.style.height="auto"; els.input.style.height=Math.min(els.input.scrollHeight,220)+"px";
-  if(!controller&&!sending) els.send.disabled=!els.input.value.trim()||!els.model.value;
+  syncSendButton();   // typing mid-reply flips the button from Stop back to Send
 });
-els.input.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); if(!controller&&!sending) submit(); } });
-async function submit(){
-  if(controller||sending) return;
+els.input.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submit(); } });
+// Sending never blocks. If the model is busy the message joins this chat's queue instead of
+// being refused, and a prompt wound back by Stop goes to the front, since it was always meant
+// to run before whatever is waiting behind it.
+function submit(){
   const t=els.input.value.trim(); if(!t) return;
   const c=currentConv();
-  // The text is left in the input until the model is actually up, so a failed or cancelled
-  // load leaves the message exactly where it was typed.
-  if(!await awaitLoad(c)) return;
-  els.input.value=""; els.input.style.height="auto"; els.send.disabled=true; sendUserMessage(t);
+  const front=!!compose;
+  if(compose){ compose=null; $("#composeBar").style.display="none"; }
+  els.input.value=""; els.input.style.height="auto"; els.send.disabled=true;
+  enqueue(c,t,front);
+  resumeQueue();
+  renderQueue();
+  drainQueue();
 }
-els.send.addEventListener("click",()=>{ controller ? controller.abort() : (sending ? cancelLoad() : submit()); });
+function requestStop(){
+  if(controller){ stopByUser=true; controller.abort(); }
+  else if(sending) cancelLoad();
+}
+els.send.addEventListener("click",()=>{ isStopMode() ? requestStop() : submit(); });
 // Leaves any in-flight reply running, same as switching to an existing chat.
 els.newChat.addEventListener("click",()=>{ newConversation(); openConversation(); els.input.focus(); });
 els.model.addEventListener("change",()=>{
@@ -1705,7 +1896,8 @@ els.model.addEventListener("change",()=>{
 });
 els.loadBtn.addEventListener("click",()=>{ const n=els.model.value; if(loadingName||ejectingName) return; isLoaded()?ejectModel(n):loadModel(n); });
 $("#thinkBtn").addEventListener("click",()=>{ state.settings.think=!state.settings.think; save(); updateThinkToggle(); });
-$("#composeCancel").addEventListener("click",()=>{ if(!compose) return; const c=currentConv(); const r=compose.restoreLeaf; compose=null; if(r) setLeaf(c,r); save(); els.input.value=""; els.input.dispatchEvent(new Event("input")); openConversation(); });
+// Also the way to let a frozen queue go: dropping the rewound prompt resumes the drain.
+$("#composeCancel").addEventListener("click",()=>{ if(!compose) return; const c=currentConv(); const r=compose.restoreLeaf; compose=null; if(r) setLeaf(c,r); save(); els.input.value=""; els.input.dispatchEvent(new Event("input")); openConversation(); drainQueue(); });
 els.collapseBtn.addEventListener("click",()=>{ els.sidebar.classList.add("collapsed"); els.showSidebar.style.display=""; });
 els.showSidebar.addEventListener("click",()=>{ els.sidebar.classList.remove("collapsed"); els.showSidebar.style.display="none"; });
 $("#s_system").addEventListener("input",e=>{ autosizeTa(e.target); renderPromptChips(); });
@@ -1725,7 +1917,7 @@ els.thread.addEventListener("click",e=>{
   const o=btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=o,900);
 });
 // Escape dismisses whatever is on top: modal, then a drawer, and otherwise stops generation.
-document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ const m=$("#confirm"); if(m.classList.contains("open")){ if(m._cancel) m._cancel(); } else if($("#ctxeditor").classList.contains("open")) closeContext(); else if(els.settings.classList.contains("open")) closeSettings(); else if(controller) controller.abort(); else if(sending||loadingName) cancelLoad(); } });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ const m=$("#confirm"); if(m.classList.contains("open")){ if(m._cancel) m._cancel(); } else if($("#ctxeditor").classList.contains("open")) closeContext(); else if(els.settings.classList.contains("open")) closeSettings(); else if(controller||sending) requestStop(); else if(loadingName) cancelLoad(); } });
 document.addEventListener("visibilitychange",()=>{ if(owns && !document.hidden) refreshPs(); });
 $("#confirm").addEventListener("click",e=>{ const m=$("#confirm"); if(e.target===m && m._cancel) m._cancel(); });  // backdrop = cancel
 
@@ -1915,6 +2107,9 @@ async function boot(){
   sessionSet("booted", true);
   if(fresh) freshChat();
   else if(!state.currentId || !state.conversations[state.currentId]) newConversation();
+  // Anything still queued from last time is held rather than fired. Coming back to find the
+  // app already three replies deep into messages you queued yesterday would be alarming.
+  if(Object.values(state.conversations).some(c=>queueOf(c).length)) halt("Held from last session.");
   openConversation();
   connectLauncher();             // not awaited: the terminal should see us immediately
   await loadModels();
