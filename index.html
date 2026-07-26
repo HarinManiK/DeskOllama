@@ -1442,7 +1442,7 @@ async function closeSettings(){
   // Nothing was committed, so there is nothing else to undo. With no pending changes left,
   // the next close goes straight through.
   if(choice==="cancel"||choice==null){ fillSettingsForm(); return; }
-  commitRows(rows,model); doClose(); updateCtxRing();
+  commitRows(rows,model); doClose(); updateCtxRing(); syncLauncher();
   await loadModels();
   await enforceOneAtOnce();
   if(choice==="reload") await loadModel(els.model.value);     // apply load-time options immediately
@@ -1474,7 +1474,7 @@ async function resetSettings(){
   if(choice==="cancel"||choice==null) return;
   applyFactoryReset();
   fillSettingsForm();       // the panel is already open, just repopulate it
-  updateCap(); updateCtxRing();
+  updateCap(); updateCtxRing(); syncLauncher();
   await loadModels();
   await enforceOneAtOnce();
   if(choice==="reload") await loadModel(els.model.value);
@@ -1685,10 +1685,37 @@ async function reassertKeepAlive(){
     try{ await fetch(base()+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(loadBody(name))}); }catch{}
   }
 }
+/* ---- launcher ----
+   Started through run.bat, the terminal owns the lifecycle: it holds a connection open to this
+   page and unloads models when the socket drops. That is a hard signal, where pagehide is
+   best-effort and can be skipped entirely, so when the launcher is present the page stands
+   down and lets it do the unloading. Opened any other way, the pagehide path below still runs. */
+let launcherManaged=false, aliveSocket=null, alivePref=null;
+// The terminal can't read localStorage, so the unload-on-close setting rides along on the
+// connection. Changing it reconnects, which is how the terminal learns the new value.
+function syncLauncher(){
+  if(!launcherManaged) return;
+  const want=!!state.settings.unloadOnClose;
+  if(aliveSocket && alivePref===want) return;
+  alivePref=want;
+  if(aliveSocket) aliveSocket.close();
+  // Held in a variable purely so it is not garbage collected: the connection's lifetime is
+  // the signal, and there is nothing to read from it.
+  aliveSocket=new EventSource("/__alive?unload="+(want?1:0));
+}
+async function connectLauncher(){
+  try{
+    const r=await fetch("/__launcher",{cache:"no-store"});
+    if(!r.ok) return;
+    if(!(await r.json()).launcher) return;
+    launcherManaged=true;
+    syncLauncher();
+  }catch{}   // served some other way; the page handles its own unload
+}
 // Only the owning tab unloads: closing a parked tab must never pull the model out from under
 // the tab actually in use.
 addEventListener("pagehide",()=>{
-  if(owns && state.settings.unloadOnClose) softUnloadAll();
+  if(owns && state.settings.unloadOnClose && !launcherManaged) softUnloadAll();
   releaseOwner();
 });
 
@@ -1772,6 +1799,7 @@ async function boot(){
   if(fresh) freshChat();
   else if(!state.currentId || !state.conversations[state.currentId]) newConversation();
   openConversation();
+  connectLauncher();             // not awaited: the terminal should see us immediately
   await loadModels();
   if(fresh) applyDefaultModel(currentConv());   // only now can defaultModel() resolve
   await reassertKeepAlive();     // cancels a grace window left behind by a refresh
