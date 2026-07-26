@@ -803,10 +803,12 @@ els.scroll.addEventListener("scroll",()=>{ const t=els.scroll.scrollTop, dist=el
    Reads always prefer a per-model override when one exists; `scope` decides only where
    writes land. Flipping a key to global therefore purges its per-model overrides, so the
    capsule means what it says: "applied for all the models in the picker". */
+// The built-in classification, ignoring any user reclassification. A factory reset restores it.
+function baseScopeOf(k){ return (GLOBAL_ONLY_KEYS.includes(k) || DEFAULT_GLOBAL_KEYS.has(k)) ? "global" : "model"; }
 function scopeOf(k){
   if(GLOBAL_ONLY_KEYS.includes(k)) return "global";
   const s=state.settings.scope[k];
-  return (s==="global"||s==="model") ? s : (DEFAULT_GLOBAL_KEYS.has(k) ? "global" : "model");
+  return (s==="global"||s==="model") ? s : baseScopeOf(k);
 }
 function globalValue(k){
   const v = isParamKey(k) ? state.settings.params[k] : state.settings[k];
@@ -1138,6 +1140,19 @@ function buildRows(f,model){
     return { key:k, from, to, scope:scopeOf(k), changed:!sameValue(k,to,from) };
   });
 }
+// The same shape of rows, but describing a reset to defaults rather than form edits. Scopes are
+// locked because a reset restores the built-in classification by definition. The base URL is
+// left out of the reset so it cannot disconnect the app from a non-default Ollama.
+function buildResetRows(model){
+  const defs=defaultParams();
+  return SCOPABLE_KEYS.map(k=>{
+    const to = k==="baseUrl" ? state.settings.baseUrl
+             : isParamKey(k) ? defs[k]
+             : DEFAULT_SETTINGS[k];
+    const from = resolveSetting(k,model);
+    return { key:k, from, to, scope:baseScopeOf(k), locked:true, changed:!sameValue(k,to,from) };
+  });
+}
 // Only settings the user actually changed are reviewable, so an untouched setting can never
 // have its scope flipped and never needs writing.
 function changedRows(rows){ return rows.filter(r=>r.changed); }
@@ -1149,10 +1164,10 @@ function reviewRow(row){
   const lbl=document.createElement("div"); lbl.className="rl"; lbl.textContent=labelOf(row.key);
   const val=document.createElement("div"); val.className="rv";
   val.innerHTML=`${esc(fmtVal(row.key,row.from))} → <b>${esc(fmtVal(row.key,row.to))}</b>`;
-  const locked=GLOBAL_ONLY_KEYS.includes(row.key);
+  const locked = row.locked || GLOBAL_ONLY_KEYS.includes(row.key);
   const cap=document.createElement("div"); cap.className="scap"+(locked?" locked":"");
   cap.innerHTML=locked
-    ? `<button type="button" class="on">Global</button>`
+    ? `<button type="button" class="on">${row.scope==="global"?"Global":"This model"}</button>`
     : `<button type="button" data-s="global">Global</button><button type="button" data-s="model">This model</button>`;
   el.append(lbl,val,cap);
 
@@ -1176,21 +1191,37 @@ function reviewRow(row){
   item.append(el,note);
   return item;
 }
-function reviewDialog(rows,model){
+// `reset` swaps the wording and adds the across-all-models warning. The button set is chosen the
+// same way either route, so a reset that changes a load-time option offers the reload just as a
+// manual edit does.
+function reviewDialog(rows,model,opts){
+  const reset=!!(opts&&opts.reset);
   const changed=changedRows(rows);
   const build=box=>{
+    if(reset){
+      const n=modelCache.length;
+      const p=document.createElement("p"); p.className="rev-note warn"; p.style.display="block";
+      p.textContent=`Also clears saved settings for ${n?`all ${n} model${n===1?"":"s"}`:"all models"} and restores the default Global / Per-model classification. The Ollama base URL and your conversations are kept.`;
+      box.appendChild(p);
+    }
     changed.forEach(r=>box.appendChild(reviewRow(r)));
+    if(!changed.length){
+      const p=document.createElement("p"); p.className="rev-note"; p.style.display="block";
+      p.textContent="No setting values change for this model.";
+      box.appendChild(p);
+    }
     if(!modelCache.length){
       const p=document.createElement("p"); p.className="rev-note warn"; p.style.display="block";
       p.textContent="Model list unavailable. Per-model limits could not be verified.";
       box.appendChild(p);
     }
   };
+  const go = reset ? "Reset" : "Save";
   const cancel={label:"Cancel",value:"cancel",cancel:true};
   const buttons = needsReloadChoice(rows)
-    ? [ cancel, {label:"Save, apply next time",value:"later"}, {label:"Save & reload now",value:"reload",primary:true} ]
-    : [ cancel, {label:"Save",value:"save",primary:true} ];
-  return dialog(`Review changes (${model||"no model"})`, "", buttons, {wide:true, build});
+    ? [ cancel, {label:`${go}, apply next time`,value:"later"}, {label:`${go} & reload now`,value:"reload",primary:true} ]
+    : [ cancel, {label:go,value:"save",primary:true} ];
+  return dialog(reset?"Reset to defaults":`Review changes (${model||"no model"})`, "", buttons, {wide:true, build});
 }
 // "Save & reload now" reloads the selected model, so the choice is only worth offering when
 // that model is loaded and a load-time option is actually changing for it. Either scope
@@ -1246,20 +1277,30 @@ async function closeSettings(){
 // Factory reset: global layer back to defaults, every per-model override dropped, and the
 // built-in Global/Per-model classification restored. The base URL is left alone so a reset
 // can't disconnect the app from a non-default Ollama.
-async function resetSettings(){
-  const n=modelCache.length;
-  const who = n ? `all ${n} model${n===1?"":"s"}` : "all models";
-  const choice=await dialog("Reset to defaults",
-    `This clears saved settings for ${who} and restores the default Global / Per-model classification.<br><br>Your conversations are kept.`,
-    [ {label:"Cancel",value:"cancel",cancel:true}, {label:"Reset everything",value:"reset",primary:true} ]);
-  if(choice!=="reset") return;
+function applyFactoryReset(){
   const s=state.settings;
-  s.params=defaultParams(); s.system=DEFAULT_SYSTEM; s.keepAlive="-1"; s.format="";
+  s.params=defaultParams(); s.system=DEFAULT_SYSTEM; s.keepAlive=DEFAULT_SETTINGS.keepAlive; s.format=DEFAULT_SETTINGS.format;
   s.modelParams={}; s.scope={};
   save();
-  reconcileModelLimits();
-  fillSettingsForm();      // the panel is already open, just repopulate it
+  reconcileModelLimits();   // re-fit anything the restored defaults put out of range
+}
+// Goes through the same review dialog as a manual edit, so the delta is listed and a load-time
+// change on a loaded model offers the reload rather than silently applying next time.
+async function resetSettings(){
+  const model=els.model.value;
+  const rows=buildResetRows(model);
+  const stored=Object.keys(state.settings.modelParams).length+Object.keys(state.settings.scope).length;
+  if(!rows.some(r=>r.changed) && !stored){
+    await dialog("Reset to defaults","Everything is already at its default.",[{label:"OK",value:"ok",cancel:true,primary:true}]);
+    return;
+  }
+  const choice=await reviewDialog(rows,model,{reset:true});
+  if(choice==="cancel"||choice==null) return;
+  applyFactoryReset();
+  fillSettingsForm();       // the panel is already open, just repopulate it
   updateCap(); updateCtxRing();
+  await loadModels();
+  if(choice==="reload") await loadModel(els.model.value);
 }
 
 /* ============ context editor ============ */
