@@ -75,7 +75,11 @@
   .think-toggle.on:hover{color:#fff}
   .ctxring{cursor:help;display:inline-grid;place-items:center;flex:0 0 auto}
   .ctxring .track{stroke:var(--border)}
-  .ctxring .prog{stroke:var(--primary);transition:stroke-dashoffset .3s,stroke .3s}
+  .ctxring .prog{stroke:var(--primary);transition:stroke-dashoffset .3s,stroke .3s,opacity .2s}
+  /* Provisional: the arc's own stroke-dasharray is what draws it, so the "unmeasured" hint
+     goes on the track and the arc's opacity instead of dashing the arc itself. */
+  .ctxring.approx .prog{opacity:.45}
+  .ctxring.approx .track{stroke-dasharray:3 3}
   .loadchip{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
   .loadbtn{padding:6px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;white-space:nowrap}
   .loadbtn:hover{background:var(--panel-2)}
@@ -147,7 +151,12 @@
   .ctxblock{border:1px solid var(--border);border-radius:10px;margin:10px 0;overflow:hidden;transition:opacity .15s}
   .ctxblock.deleted{opacity:.4}
   .ctxblock .bh{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-  .ctxblock .bh .del{margin-left:auto;color:var(--muted);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0}
+  /* What this turn cost. Takes the auto margin so it sits right of the title, with Delete
+     following it rather than being pushed apart by a second auto margin. */
+  .ctxblock .bh .tok{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:600;
+    color:var(--txt-dim);text-transform:none;letter-spacing:0;cursor:help}
+  .ctxblock .bh .tok.stale{color:var(--muted);opacity:.5}
+  .ctxblock .bh .del{color:var(--muted);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0}
   .ctxblock .bh .del:hover{background:var(--border);color:var(--txt)}
   .ctxmsg+.ctxmsg{border-top:1px solid var(--border-soft)}
   .ctxmsg>.role{padding:8px 12px 0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
@@ -308,6 +317,7 @@
     <button class="loadbtn" id="loadBtn"></button>
     <span class="capinfo" id="capinfo"></span>
     <span class="grow"></span>
+    <span class="ctxring" id="ctxRing" style="display:none"><svg width="34" height="34" viewBox="0 0 34 34"><circle class="track" cx="17" cy="17" r="15.5" fill="none" stroke-width="2.5"/><circle class="prog" cx="17" cy="17" r="15.5" fill="none" stroke-width="2.5" stroke-linecap="round" transform="rotate(-90 17 17)"/></svg></span>
     <button class="think-toggle" id="thinkBtn" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.9 1 1 1.7l.1.5h5l.1-.5c.1-.7.5-1.3 1-1.7A6 6 0 0 0 12 3z"/></svg></button>
     <button class="tb-btn" id="ctxBtn" data-tip="Show context (view and edit this branch's messages)" title="Context"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
 
@@ -684,18 +694,51 @@ function updateThinkToggle(){
   btn.classList.toggle("on",on);
   btn.dataset.tip = `Thinking mode: ${on?"ON":"OFF"}\nThe model reasons before answering.`;
 }
-function ctxLimit(){ return effectiveNumCtx(els.model.value); }
+// The window this chat's model actually has. Reading it from the picker would show one chat
+// another chat's limit, since a conversation carries its own model.
+function ctxLimit(c){ return effectiveNumCtx((c||currentConv()).model); }
+/* How much of the window this branch occupies.
+
+   Only `prompt_eval_count` is trustworthy here. eval_count counts thinking, which Ollama
+   strips from history and never resends, so pt+et overstates a reasoning model by multiples;
+   it also double counts the generation-prompt tokens that get replaced rather than appended.
+
+   `ctx` is the measured occupancy including the reply. `pt` is the occupancy of the prompt
+   that produced the reply, so it excludes the reply itself and is therefore a floor. That
+   floor is never an overstatement: a pending message, a stopped reply and an edited turn can
+   only ever add to the prefix it was measured on. */
+function pathUsage(c){
+  const path=pathOf(c);
+  for(let i=path.length-1;i>=0;i--){
+    const n=path[i];
+    if(n.role!=="assistant") continue;
+    if(n.mdl && n.mdl!==c.model) continue;      // measured under a different tokenizer
+    if(n.ctx!=null) return {used:n.ctx, exact:true,  node:n};
+    if(n.pt!=null)  return {used:n.pt,  exact:false, node:n};
+  }
+  return {used:0, exact:true, node:null};
+}
 function updateCtxRing(){
   const ring=$("#ctxRing"); if(!ring) return;
-  const path=pathOf(currentConv()); let used=0;
-  for(let i=path.length-1;i>=0;i--){ const n=path[i]; if(n.role==="assistant" && n.pt!=null){ used=(n.pt||0)+(n.et||0); break; } }
-  const limit=ctxLimit();
-  const C=2*Math.PI*15.5, frac=Math.min(1,used/limit);
+  const c=currentConv();
+  const {used, exact}=pathUsage(c);
+  const limit=ctxLimit(c);
+  const C=2*Math.PI*15.5, frac=limit>0?Math.min(1,used/limit):0;
   const prog=ring.querySelector(".prog");
   prog.style.strokeDasharray=C.toFixed(2); prog.style.strokeDashoffset=(C*(1-frac)).toFixed(2);
   prog.style.stroke = frac>=0.9?"var(--danger)":(frac>=0.75?"#eab308":"var(--primary)");
+  // A figure we measured draws solid; a floor draws dashed, so the ring never looks more
+  // certain than it is.
+  ring.classList.toggle("approx",!exact);
   const pct=Math.round(frac*100), left=Math.max(0,limit-used);
-  ring.dataset.tip=`Context window: ${limit.toLocaleString()} tokens\nUsed: ${used.toLocaleString()} (${pct}%)\nLeft: ${left.toLocaleString()} (${Math.max(0,100-pct)}%)`;
+  const lines=[
+    `Context window: ${limit.toLocaleString()} tokens`,
+    `Used: ${used.toLocaleString()} (${pct}%)`,
+    `Left: ${left.toLocaleString()} (${Math.max(0,100-pct)}%)`,
+  ];
+  if(!exact) lines.push(`At least this much. Exact after the next reply.`);
+  if(frac>=0.9) lines.push(`Nearly full. Ollama starts dropping the oldest messages silently.`);
+  ring.dataset.tip=lines.join("\n");
   ring.style.display="";
 }
 function setConn(ok,txt){ els.condot.className="dot "+(ok?"ok":"bad"); els.constat.textContent=txt; }
@@ -764,6 +807,7 @@ async function loadModel(name){
   if(loadingName===name && loadPromise) return loadPromise;   // already on it
   if(loadingName) return false;                               // a different model is loading
   const p=(async()=>{
+    cancelMeasure();   // the model is about to change under any reading in flight
     if(state.settings.oneAtOnce) await evictOthers(name);
     loadingName=name; loadAbort=new AbortController(); updateLoadUI(); renderEmpty();
     try{
@@ -947,6 +991,7 @@ function openConversation(){
   $("#composeBar").style.display = compose ? "flex" : "none";
   renderQueue();
   updateLoadUI(); updateCtxRing(); scrollBottom();
+  scheduleMeasure();   // covers branch and chat switches: measure this tail if it is unmeasured
 }
 let autostick=true, lastTop=1e9;   // follow the stream only while the user is parked at the bottom
 function scrollBottom(){ els.scroll.scrollTop=els.scroll.scrollHeight; }
@@ -1105,6 +1150,69 @@ function setSendLoading(on){
   syncSendButton();
   if(!on) updateGate();
 }
+/* ============ context measurement ============
+   The request body for a chat turn, shared with measureCtx() so a reading can never drift
+   from the thing it claims to measure. The system prompt, the path, the think flag and the
+   load-time options all affect how many tokens Ollama counts, so all four have to match. */
+function chatPayload(c){
+  const msgs=[];
+  const sys=convSystem(c);   // this chat's own override, else the layered setting
+  if(sys.trim()) msgs.push({role:"system",content:sys});
+  for(const nd of pathOf(c)) msgs.push({role:nd.role,content:nd.content});
+  const p={model:c.model, messages:msgs, options:buildOptions(c.model)};
+  if(modelCaps(c.model).includes("thinking")) p.think=!!state.settings.think;  // avoid 400 on non-thinking models
+  const ka=parseKeepAlive(resolveSetting("keepAlive",c.model)); if(ka.val!==undefined) p.keep_alive=ka.val;
+  const fmt=resolveSetting("format",c.model); if(fmt) p.format=fmt;
+  return p;
+}
+let measureTimer=null, measureAbort=null;
+function cancelMeasure(){
+  if(measureTimer){ clearTimeout(measureTimer); measureTimer=null; }
+  if(measureAbort){ measureAbort.abort(); measureAbort=null; }
+}
+// A reading is worth nothing next to actual work, so it only runs in genuinely idle time.
+function measureIdle(){
+  return owns && !controller && !sending && !draining && !loadingName && !ejectingName;
+}
+// The node a reading would describe. The path has to END at the reply being measured, or the
+// message list would include a pending user turn and the number would belong to nothing.
+function unmeasuredTail(c){
+  const path=pathOf(c);
+  const last=path[path.length-1];
+  if(!last || last.role!=="assistant") return null;
+  if(last.ctx!=null && (!last.mdl || last.mdl===c.model)) return null;
+  return last;
+}
+function scheduleMeasure(){
+  cancelMeasure();
+  measureTimer=setTimeout(()=>{ measureTimer=null; measureCtx(state.currentId); }, 400);
+}
+/* Learns the one number generation cannot give us: occupancy including the newest reply.
+   prompt_eval_count is exact for whatever message list you hand it, so we hand it the path
+   and read the count back. num_predict is a runtime option, not one of LOAD_TIME_KEYS, so
+   overriding it cannot make Ollama key a different runner and reload the model. */
+async function measureCtx(convId){
+  const c=state.conversations[convId]; if(!c) return;
+  if(!measureIdle()) return;
+  if(!loadedModels.has(c.model)) return;      // never load a model just to take a reading
+  const node=unmeasuredTail(c); if(!node) return;
+  const payload={...chatPayload(c), stream:false};
+  payload.options={...payload.options, num_predict:1};
+  measureAbort=new AbortController();
+  try{
+    const r=await fetch(base()+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload), signal:measureAbort.signal});
+    if(!r.ok) return;
+    const n=(await r.json()).prompt_eval_count;
+    if(!Number.isFinite(n) || n<=0) return;
+    if(!c.nodes[node.id]) return;             // the branch went away while we were asking
+    node.ctx=n; node.mdl=c.model; save();
+    updateCtxRing();
+    if($("#ctxeditor").classList.contains("open")) renderCtxList();
+  }catch{ /* silent: the ring simply stays a floor */ }
+  finally{ measureAbort=null; }
+}
+
 // Generates a reply into `c`, which is not necessarily the chat on screen: the queue keeps
 // draining into the chat a message was typed in even after you have moved on. Returns
 // "ok" | "aborted" | "error" so the drain loop knows whether to carry on.
@@ -1119,19 +1227,16 @@ async function generate(c){
   // here and openConversation() re-attaches it to a fresh row when the chat comes back.
   live={convId:c.id, dom, assistant};
   let status="ok";
-  const msgs=[];
-  const sys=convSystem(c);   // this chat's own override, else the layered setting
-  if(sys.trim()) msgs.push({role:"system",content:sys});
-  for(const nd of pathOf(c)) msgs.push({role:nd.role,content:nd.content});
-  const payload={model:c.model, stream:true, messages:msgs, options:buildOptions(c.model)};
-  if(modelCaps(c.model).includes("thinking")) payload.think=!!state.settings.think;  // avoid 400 on non-thinking models
-  const ka=parseKeepAlive(resolveSetting("keepAlive",c.model)); if(ka.val!==undefined) payload.keep_alive=ka.val;
-  const fmt=resolveSetting("format",c.model); if(fmt) payload.format=fmt;
-
+  const payload={...chatPayload(c), stream:true};
+  cancelMeasure();   // a reading in flight is about to be out of date anyway
   controller=new AbortController(); setBusy(true); let stats=null;
   const commit=()=>{ const an=addNode(c, parentId, "assistant", assistant.content, assistant.thinking, assistant.meta);
     // Ollama's raw prompt/output token counts, plus how long generation itself took (ns).
-    if(stats){ an.pt=stats.prompt_eval_count||0; an.et=stats.eval_count||0; an.ed=stats.eval_duration||0; }
+    // pt is the exact size of the prompt that produced this reply, so it is the occupancy of
+    // everything up to and including the user message above. The reply itself is not in it
+    // yet; measureCtx() fills that in as `ctx`. mdl records which tokenizer produced these
+    // numbers, since they mean nothing under a different model.
+    if(stats){ an.pt=stats.prompt_eval_count||0; an.et=stats.eval_count||0; an.ed=stats.eval_duration||0; an.mdl=c.model; }
     touch(c); save();
     attachActions(c,an,live.dom,nodeChildren(c,an.parentId)); return an; };
   try{
@@ -1235,7 +1340,7 @@ async function drainQueue(){
       // the same error five times over.
       if(await generate(c)==="error"){ halt("Paused after an error."); break; }
     }
-  }finally{ draining=false; renderQueue(); }
+  }finally{ draining=false; renderQueue(); scheduleMeasure(); }
 }
 const ICON_PENCIL='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 const ICON_X='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>';
@@ -1851,26 +1956,47 @@ function renderCtxList(){
   const list=$("#ctxList"); list.innerHTML="";
   renderCtxSystem(list);
   if(!ctxState.length){ list.insertAdjacentHTML("beforeend",'<div class="ctx-empty">This branch has no messages yet.</div>'); return; }
+  const c=currentConv();
   const blocks=[...new Set(ctxState.map(it=>it.block))];
+  let prevCtx=0;   // occupancy after the previous turn, so each badge is that turn's own cost
   blocks.forEach((bi,n)=>{
     const items=ctxState.filter(it=>it.block===bi);
     const gone=()=>items.every(it=>it.deleted);
     const box=document.createElement("div"); box.className="ctxblock"+(gone()?" deleted":"");
     const head=document.createElement("div"); head.className="bh";
-    head.innerHTML=`<span>Turn ${n+1}</span><button class="del"></button>`;
+    head.innerHTML=`<span>Turn ${n+1}</span><span class="tok"></span><button class="del"></button>`;
     box.appendChild(head);
+
+    // What this turn added to the window. Read live from the node rather than copied into
+    // ctxState, so there is one source of truth. Needs both ends measured: this turn's
+    // occupancy and the previous turn's.
+    const tail=items.map(it=>c.nodes[it.id]).filter(nd=>nd && nd.role==="assistant").pop();
+    const measured = tail && tail.ctx!=null && (!tail.mdl || tail.mdl===c.model);
+    const badge=head.querySelector(".tok");
+    if(measured){
+      badge.textContent="+"+(tail.ctx-prevCtx).toLocaleString();
+      badge.dataset.tip=`This turn added ${(tail.ctx-prevCtx).toLocaleString()} tokens.\nTotal after it: ${tail.ctx.toLocaleString()}.`;
+      prevCtx=tail.ctx;
+    }else{
+      badge.textContent="—";
+      badge.classList.add("stale");
+      badge.dataset.tip="Not measured yet. Send a message in this branch and it will be counted.";
+    }
+
     const tas=[];
+    // The count describes the text as it was generated, so touching it makes the badge a lie.
+    const staleBadge=()=>{ badge.classList.add("stale"); badge.dataset.tip="Edited since it was measured."; };
     for(const it of items){
       const msg=document.createElement("div"); msg.className="ctxmsg";
       const lbl=document.createElement("div"); lbl.className="role "+(it.role==="user"?"u":"a");
       lbl.textContent=it.role==="user"?"You":"Assistant";
       const ta=document.createElement("textarea");
       ta.value=it.content;
-      ta.addEventListener("input",()=>{ it.content=ta.value; autosizeTa(ta); });
+      ta.addEventListener("input",()=>{ it.content=ta.value; autosizeTa(ta); if(measured) staleBadge(); });
       msg.append(lbl,ta); box.appendChild(msg); tas.push(ta);
     }
     const del=head.querySelector(".del");
-    const sync=()=>{ const d=gone(); box.classList.toggle("deleted",d); del.textContent=d?"Undo":"Delete"; tas.forEach(ta=>ta.disabled=d); };
+    const sync=()=>{ const d=gone(); box.classList.toggle("deleted",d); del.textContent=d?"Undo":"Delete"; tas.forEach(ta=>ta.disabled=d); badge.classList.toggle("stale",d||!measured); };
     del.onclick=()=>{ const d=!gone(); items.forEach(it=>it.deleted=d); sync(); };   // whole turn at once
     sync();
     list.appendChild(box);
@@ -1909,6 +2035,7 @@ function submit(){
   const front=!!compose;
   if(compose){ compose=null; $("#composeBar").style.display="none"; }
   els.input.value=""; els.input.style.height="auto"; els.send.disabled=true;
+  cancelMeasure();   // real work now: drop any reading in flight rather than queue behind it
   enqueue(c,t,front);
   resumeQueue();
   renderQueue();
