@@ -162,6 +162,19 @@
   .ctx-empty{color:var(--muted);text-align:center;padding:40px 0;font-size:14px}
   /* Grows with its content like the context editor boxes; three lines to begin with. */
   #s_system{resize:none;overflow:hidden;line-height:1.5;min-height:81px}
+  /* Saved system prompts. One can be active at a time, and "active" simply means the box below
+     holds that prompt's text, so editing it naturally deselects. */
+  .promptbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
+  .promptbar>.btn{padding:5px 10px;font-size:12px;white-space:nowrap}
+  .promptbar .none{font-size:11.5px;color:var(--muted)}
+  .pchip{display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--txt-dim);max-width:100%}
+  .pchip:hover{border-color:var(--primary);color:var(--txt)}
+  .pchip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .pchip .nm{cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+  .pchip .x{width:17px;height:17px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;font-size:14px;line-height:1;color:inherit;opacity:.55}
+  .pchip .x:hover{opacity:1;background:rgba(127,127,127,.35)}
+  #promptName{margin-bottom:14px}
+  #promptText{resize:vertical;min-height:120px;line-height:1.5}
 
   .composer-wrap{flex:0 0 auto;padding:6px 16px 14px}
   .composer{max-width:768px;margin:0 auto;background:var(--composer);border:1px solid var(--border);border-radius:26px;padding:8px 8px 8px 16px;display:flex;align-items:flex-end;gap:8px}
@@ -304,8 +317,8 @@
     </div>
     <div class="set-group">
       <p class="gh">Model loading</p>
-      <div class="field switch"><label>Auto load a model when the app opens<span class="help" data-tip="On a fresh open (not a refresh) the chosen model is loaded for you.">?</span></label><input type="checkbox" id="s_autoload"></div>
-      <div class="field"><label>Auto-load model<span class="help" data-tip="Loaded on open, and the model every new chat starts with.&#10;If it isn't installed the app says so rather than downloading anything.">?</span></label><select id="s_autoloadmodel"></select></div>
+      <div class="field switch"><label>Load the default model on open<span class="help" data-tip="On a fresh open (not a refresh) the default model is loaded for you.">?</span></label><input type="checkbox" id="s_autoload"></div>
+      <div class="field"><label>Default model<span class="help" data-tip="The model every new chat starts with, and the one loaded on open.&#10;If it isn't installed the app says so rather than downloading anything.">?</span></label><select id="s_defaultmodel"></select></div>
       <div class="field switch"><label>One model at a time<span class="help" data-tip="Loading a model unloads any other first, so only one ever occupies VRAM.&#10;Turn off to keep several resident at once.">?</span></label><input type="checkbox" id="s_oneatonce"></div>
       <div class="field switch"><label>Unload models when the app closes<span class="help" data-tip="Frees VRAM a few seconds after the window closes.&#10;A refresh doesn't count: the model stays put.">?</span></label><input type="checkbox" id="s_unloadonclose"></div>
     </div>
@@ -320,6 +333,7 @@
     <div class="set-group">
       <p class="gh">System prompt</p>
       <p class="gnote">Prepended to every conversation to steer how the model behaves. A single chat can override this from its Context panel.</p>
+      <div class="promptbar"><span id="promptChips" style="display:contents"></span><button class="btn" type="button" id="addPrompt">+ Save a prompt</button></div>
       <div class="field"><textarea id="s_system" rows="3" placeholder="Optional. Applies to every chat."></textarea></div>
     </div>
     <div id="setErr" class="field hint" style="display:none;color:var(--danger);border:1px solid var(--danger);border-radius:8px;padding:9px 11px;margin-top:14px"></div>
@@ -404,8 +418,8 @@ function defaultParams(){ const p={}; for(const it of SPEC_ITEMS) p[it.k] = (it.
 const EXTRA_SETTINGS = [
   {k:"baseUrl",   label:"Ollama base URL",       locked:true},   // the server, not a model property
   // How the app manages residency. App-level rather than model properties, so locked to global.
-  {k:"autoLoad",      label:"Auto load on open",                 locked:true, type:"bool"},
-  {k:"autoLoadModel", label:"Auto-load model",                   locked:true},
+  {k:"autoLoad",      label:"Load the default model on open",    locked:true, type:"bool"},
+  {k:"defaultModel",  label:"Default model",                     locked:true},
   {k:"oneAtOnce",     label:"One model at a time",               locked:true, type:"bool"},
   {k:"unloadOnClose", label:"Unload models when the app closes", locked:true, type:"bool"},
   {k:"system",    label:"System prompt"},
@@ -424,13 +438,18 @@ function labelOf(k){ return (SPEC_BY_KEY[k]||EXTRA_BY_KEY[k]||{}).label || k; }
 
 /* ============ persistence (v3, migrates conversations from v2) ============ */
 const KEY = "localharness.v3";
-const DEFAULT_SYSTEM = 'Never output the em dash character ("—"). Replace only the role an em dash would have served with the most natural alternative (usually parentheses or a full stop). Leave all other punctuation and writing style unchanged.';
+// The system prompt this app used to ship with. Kept only so a stored copy can be recognised
+// as ours and cleared. Nothing sets it any more.
+const RETIRED_DEFAULT_SYSTEM = 'Never output the em dash character ("—"). Replace only the role an em dash would have served with the most natural alternative (usually parentheses or a full stop). Leave all other punctuation and writing style unchanged.';
 // params = the GLOBAL layer. modelParams = sparse per-model overrides, keyed by full model tag.
 // scope   = sparse user overrides of the built-in classification (key -> "global"|"model").
-const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:DEFAULT_SYSTEM, keepAlive:"-1", format:"", model:"", scope:{}, modelParams:{},
+// prompts = the saved system-prompt library: [{id,name,text}]. A convenience for filling the
+//   `system` setting, never a second source of truth for what actually gets sent. Kept out of
+//   EXTRA_SETTINGS so it is not diffed, and survives a reset.
+const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:"", keepAlive:"-1", format:"", model:"", scope:{}, modelParams:{}, prompts:[],
   // Residency. autoLoadPrompted is bookkeeping for the first-run offer, not a reviewable
   // setting, so it is deliberately absent from EXTRA_SETTINGS.
-  autoLoad:false, autoLoadModel:"", oneAtOnce:true, unloadOnClose:true, autoLoadPrompted:false };
+  autoLoad:false, defaultModel:"", oneAtOnce:true, unloadOnClose:true, autoLoadPrompted:false };
 function durToSeconds(s){ const m=/^(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)?$/.exec(String(s).trim()); if(!m) return null; const mult={ns:1e-9,us:1e-6,"µs":1e-6,ms:1e-3,s:1,m:60,h:3600}[m[2]||"s"]; return Math.round(parseFloat(m[1])*mult); }
 
 /* ---- per-tab session ----
@@ -452,6 +471,14 @@ function load(){
       // Cloned, never aliased to DEFAULT_SETTINGS (these two get mutated in place).
       v3.settings.scope = {...(v3.settings.scope||{})};
       v3.settings.modelParams = {...(v3.settings.modelParams||{})};
+      v3.settings.prompts = Array.isArray(v3.settings.prompts) ? [...v3.settings.prompts] : [];
+      // autoLoadModel was renamed to defaultModel, which is what it always meant.
+      if(!v3.settings.defaultModel && v3.settings.autoLoadModel) v3.settings.defaultModel=v3.settings.autoLoadModel;
+      delete v3.settings.autoLoadModel;
+      // The app used to ship an em-dash rule as the system prompt. It is gone, so a stored copy
+      // that still matches it verbatim was ours rather than the user's and goes with it. Anything
+      // edited even slightly is their writing and is left alone.
+      if(v3.settings.system===RETIRED_DEFAULT_SYSTEM) v3.settings.system="";
       const ka=v3.settings.keepAlive;                                  // migrate old "5m"/"1h" → seconds
       if(typeof ka==="string" && ka.trim()!=="" && !/^-?\d+$/.test(ka.trim())){ const sec=durToSeconds(ka); v3.settings.keepAlive = sec==null?"300":String(sec); }
       v3.currentId = sessionGet("currentId");   // per-tab now, not whatever the blob last held
@@ -491,7 +518,7 @@ function nextChatTitle(){
 function newConversation(){
   const id=uid();
   // New chats start on the auto-load model, not on whatever was last picked.
-  state.conversations[id]={id, title:nextChatTitle(), model:defaultModel()||state.settings.model, nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
+  state.conversations[id]={id, title:nextChatTitle(), model:pickDefaultModel()||state.settings.model, nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
   state.currentId=id; compose=null; save(); return state.conversations[id];
 }
 function migrateConv(c){            // old flat .messages → node chain
@@ -595,7 +622,7 @@ async function loadModels(){
     els.model.innerHTML=names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
     const c=currentConv();
     if(!state.settings.model || !names.includes(state.settings.model)) state.settings.model=names[0]||"";
-    if(!c.model || !names.includes(c.model)) c.model=defaultModel()||state.settings.model;
+    if(!c.model || !names.includes(c.model)) c.model=pickDefaultModel()||state.settings.model;
     els.model.value=c.model;
     setConn(true, names.length+" model"+(names.length===1?"":"s")); els.banner.style.display="none";
     updateCap(); save(); await refreshPs();
@@ -1190,16 +1217,84 @@ function openSettings(){
 }
 // Repopulates every field from saved state for the selected model. Used when opening the
 // panel, when the model changes under it, and to throw away edits on Cancel.
-// Installed models, plus the saved auto-load model even when it is no longer installed, so a
-// missing model is shown and kept rather than silently dropped on the next save.
-function fillAutoLoadModels(){
-  const sel=$("#s_autoloadmodel"), saved=state.settings.autoLoadModel||"";
+// Installed models only, plus the saved choice when it is no longer installed, so a missing
+// model is shown and kept rather than silently dropped on the next save. There is no "first
+// alphabetically" entry: settleDefaultModel() resolves that to a real model name, so the
+// control always names the model actually in use.
+function fillDefaultModelSelect(){
+  const sel=$("#s_defaultmodel");
+  const saved=state.settings.defaultModel||pickDefaultModel();
   const names=modelCache.map(m=>m.name);
-  const opts=[`<option value="">First model (alphabetical)</option>`];
-  for(const n of names) opts.push(`<option value="${escAttr(n)}">${esc(n)}</option>`);
+  const opts=names.map(n=>`<option value="${escAttr(n)}">${esc(n)}</option>`);
   if(saved && !names.includes(saved)) opts.push(`<option value="${escAttr(saved)}">${esc(saved)} (not installed)</option>`);
+  if(!opts.length) opts.push(`<option value="">No models installed</option>`);
   sel.innerHTML=opts.join("");
   sel.value=saved;
+}
+/* ---- saved system prompts ----
+   A library of named prompts that fills the box below it. The `system` setting stays the single
+   source of truth for what actually gets sent, so nothing downstream changes. "Active" is not
+   stored: a prompt is active when the box holds its text, which means editing the box naturally
+   deselects. Adding and deleting save immediately, because the library is a lasting asset rather
+   than a pending edit, while picking one only changes the box and so still goes through the
+   review dialog like any other setting change. */
+function promptList(){
+  if(!Array.isArray(state.settings.prompts)) state.settings.prompts=[];
+  return state.settings.prompts;
+}
+function renderPromptChips(){
+  const bar=$("#promptChips"); if(!bar) return;
+  bar.innerHTML="";
+  const list=promptList();
+  if(!list.length){ bar.innerHTML=`<span class="none">No saved prompts yet.</span>`; return; }
+  const cur=$("#s_system").value;
+  for(const p of list){
+    const el=document.createElement("div");
+    el.className="pchip"+(p.text===cur?" on":"");
+    const nm=document.createElement("span");
+    nm.className="nm"; nm.textContent=p.name; nm.title=p.text;
+    nm.onclick=()=>{ const ta=$("#s_system"); ta.value=p.text; autosizeTa(ta); renderPromptChips(); };
+    const x=document.createElement("button");
+    x.className="x"; x.type="button"; x.textContent="×"; x.title="Delete "+p.name;
+    x.onclick=()=>deletePrompt(p);
+    el.append(nm,x); bar.appendChild(el);
+  }
+}
+async function deletePrompt(p){
+  const choice=await dialog("Delete saved prompt",
+    `Delete <b>${esc(p.name)}</b> from your saved prompts?<br><br>Whatever is in the system prompt box stays as it is.`,
+    [CANCEL_BTN,{label:"Delete",value:"del",primary:true}]);
+  if(choice!=="del") return;
+  state.settings.prompts=promptList().filter(x=>x.id!==p.id);
+  save(); renderPromptChips();
+}
+// Saving under a name that already exists replaces it, which doubles as the way to edit one.
+async function addPromptDialog(){
+  let name="", text=$("#s_system").value;
+  const choice=await dialog("Save a prompt","",
+    [CANCEL_BTN,{label:"Save",value:"save",primary:true}],
+    { wide:true, build(box){
+        const label=(txt,top)=>{ const l=document.createElement("label"); l.textContent=txt;
+          l.style.cssText=`display:block;font-size:13px;margin:${top} 0 5px;color:var(--txt-dim)`; return l; };
+        const ni=document.createElement("input"); ni.id="promptName"; ni.placeholder="e.g. Concise answers";
+        ni.addEventListener("input",()=>{ name=ni.value; });
+        const ta=document.createElement("textarea"); ta.id="promptText"; ta.value=text;
+        ta.placeholder="What the model should always do.";
+        ta.addEventListener("input",()=>{ text=ta.value; });
+        box.append(label("Name","0"), ni, label("Prompt","4px"), ta);
+        requestAnimationFrame(()=>ni.focus());
+      } });
+  if(choice!=="save") return;
+  name=name.trim(); text=text.trim();
+  if(!name || !text){
+    await dialog("Save a prompt","A name and a prompt are both needed.",
+      [{label:"OK",value:"ok",cancel:true,primary:true}]);
+    return;
+  }
+  const list=promptList();
+  const at=list.findIndex(x=>x.name.toLowerCase()===name.toLowerCase());
+  if(at>=0) list[at]={...list[at], name, text}; else list.push({id:uid(), name, text});
+  save(); renderPromptChips();
 }
 function fillSettingsForm(){
   const s=state.settings, model=els.model.value;
@@ -1207,13 +1302,14 @@ function fillSettingsForm(){
   $("#s_autoload").checked=!!s.autoLoad;
   $("#s_oneatonce").checked=!!s.oneAtOnce;
   $("#s_unloadonclose").checked=!!s.unloadOnClose;
-  fillAutoLoadModels();
+  fillDefaultModelSelect();
   $("#s_system").value=resolveSetting("system",model)||"";
   $("#s_keepalive").value=resolveSetting("keepAlive",model)||"";
   $("#s_format").value=resolveSetting("format",model)||"";
   $("#setModel").textContent=model||"";
   buildSettingsForm(resolveParams(model));
   autosizeTa($("#s_system"));
+  renderPromptChips();
   $("#setErr").style.display="none";
 }
 function readParams(){
@@ -1267,7 +1363,6 @@ function fmtVal(k,v){
   }
   const ex=EXTRA_BY_KEY[k];
   if(ex && ex.type==="bool") return v?"On":"Off";   // before the blank check: false is a value, not "unset"
-  if(k==="autoLoadModel" && (v==null||v==="")) return "First installed";
   if(v==null||v==="") return k==="format"?"Text":"not set";
   if(k==="format") return v==="json"?"JSON":"Text";
   const s=String(v).replace(/\s+/g," ").trim();
@@ -1284,7 +1379,11 @@ function buildRows(f,model){
 // What a reset lands each setting on. The base URL is excluded so a reset cannot disconnect the
 // app from a non-default Ollama.
 function resetTarget(k,defs){
-  return k==="baseUrl" ? state.settings.baseUrl : (isParamKey(k) ? defs[k] : DEFAULT_SETTINGS[k]);
+  if(k==="baseUrl") return state.settings.baseUrl;
+  // A reset re-settles the default model onto the alphabetically-first installed one, so report
+  // that rather than the empty placeholder it passes through on the way.
+  if(k==="defaultModel") return (modelCache[0]&&modelCache[0].name) || "";
+  return isParamKey(k) ? defs[k] : DEFAULT_SETTINGS[k];
 }
 // A reset is global, so the plan covers every model rather than only the selected one: one group
 // per model listing what changes for it. Rows are `bare` because a reset restores every value and
@@ -1374,11 +1473,11 @@ function resetDialog(plan,selfRows){
   const build=box=>{
     const n=modelCache.length;
     const warn=document.createElement("p"); warn.className="rev-note warn"; warn.style.display="block";
-    warn.textContent=`Restores defaults across ${n?`all ${n} model${n===1?"":"s"}`:"every model"} and the built-in Global / Per-model classification. The Ollama base URL and your conversations are kept.`;
+    warn.textContent=`Restores defaults across ${n?`all ${n} model${n===1?"":"s"}`:"every model"} and the built-in Global / Per-model classification. The Ollama base URL, your saved prompts and your conversations are kept.`;
     box.appendChild(warn);
     if(!plan.length){
       const p=document.createElement("p"); p.className="rev-note"; p.style.display="block";
-      p.textContent="No setting values change. Only the saved per-model entries and the classification are cleared.";
+      p.textContent="No setting values change. The saved per-model entries and the classification are cleared, and you are asked again which model to load on open.";
       box.appendChild(p);
     }
     for(const g of plan){
@@ -1403,7 +1502,7 @@ function needsReloadChoice(rows){
 function readForm(){
   return { baseUrl:normalizeBase($("#s_base").value), system:$("#s_system").value,
     keepAlive:$("#s_keepalive").value.trim(), format:$("#s_format").value,
-    autoLoad:$("#s_autoload").checked, autoLoadModel:$("#s_autoloadmodel").value,
+    autoLoad:$("#s_autoload").checked, defaultModel:$("#s_defaultmodel").value,
     oneAtOnce:$("#s_oneatonce").checked, unloadOnClose:$("#s_unloadonclose").checked,
     params:readParams() };
 }
@@ -1452,23 +1551,23 @@ async function closeSettings(){
 // can't disconnect the app from a non-default Ollama.
 function applyFactoryReset(){
   const s=state.settings;
-  s.params=defaultParams(); s.system=DEFAULT_SYSTEM; s.keepAlive=DEFAULT_SETTINGS.keepAlive; s.format=DEFAULT_SETTINGS.format;
-  s.autoLoad=DEFAULT_SETTINGS.autoLoad; s.autoLoadModel=DEFAULT_SETTINGS.autoLoadModel;
+  // The active system prompt is cleared, but the saved library is not: those are the user's
+  // own writing, not a setting, and re-typing them is not what "restore defaults" should mean.
+  s.params=defaultParams(); s.system=DEFAULT_SETTINGS.system; s.keepAlive=DEFAULT_SETTINGS.keepAlive; s.format=DEFAULT_SETTINGS.format;
+  s.autoLoad=DEFAULT_SETTINGS.autoLoad; s.defaultModel=DEFAULT_SETTINGS.defaultModel;
   s.oneAtOnce=DEFAULT_SETTINGS.oneAtOnce; s.unloadOnClose=DEFAULT_SETTINGS.unloadOnClose;
-  // autoLoadPrompted is left alone: a reset shouldn't re-ask a question already answered.
+  s.autoLoadPrompted=false;   // a reset puts the default-model question back on the table
   s.modelParams={}; s.scope={};
   save();
   reconcileModelLimits();   // re-fit anything the restored defaults put out of range
 }
 // Reviewed before it applies, like a manual edit: the delta is listed per model, and a load-time
 // change on the loaded model offers the reload rather than silently applying next time.
+// A reset always has something to do now, because it puts the default-model question back on
+// the table even when no value changes, so there is no longer an "already at its default"
+// short circuit. An empty plan is described inside the dialog instead.
 async function resetSettings(){
   const plan=buildResetPlan();
-  const stored=Object.keys(state.settings.modelParams).length+Object.keys(state.settings.scope).length;
-  if(!plan.length && !stored){
-    await dialog("Reset to defaults","Everything is already at its default.",[{label:"OK",value:"ok",cancel:true,primary:true}]);
-    return;
-  }
   const selfRows=(plan.find(g=>g.model===els.model.value)||{rows:[]}).rows;
   const choice=await resetDialog(plan,selfRows);
   if(choice==="cancel"||choice==null) return;
@@ -1476,8 +1575,14 @@ async function resetSettings(){
   fillSettingsForm();       // the panel is already open, just repopulate it
   updateCap(); updateCtxRing(); syncLauncher();
   await loadModels();
+  // A reset cleared the answer, so the default-model question is asked again exactly as it is
+  // on a first run. Saying yes here loads it straight away rather than waiting for a restart.
+  const justEnabled=await firstRunPrompt();
+  settleDefaultModel();     // declined, so land on a concrete model rather than nothing
+  fillSettingsForm();
   await enforceOneAtOnce();
-  if(choice==="reload") await loadModel(els.model.value);
+  if(justEnabled) await autoLoadOnOpen();
+  else if(choice==="reload") await loadModel(els.model.value);
 }
 
 /* ============ context editor ============ */
@@ -1604,7 +1709,8 @@ $("#thinkBtn").addEventListener("click",()=>{ state.settings.think=!state.settin
 $("#composeCancel").addEventListener("click",()=>{ if(!compose) return; const c=currentConv(); const r=compose.restoreLeaf; compose=null; if(r) setLeaf(c,r); save(); els.input.value=""; els.input.dispatchEvent(new Event("input")); openConversation(); });
 els.collapseBtn.addEventListener("click",()=>{ els.sidebar.classList.add("collapsed"); els.showSidebar.style.display=""; });
 els.showSidebar.addEventListener("click",()=>{ els.sidebar.classList.remove("collapsed"); els.showSidebar.style.display="none"; });
-$("#s_system").addEventListener("input",e=>autosizeTa(e.target));
+$("#s_system").addEventListener("input",e=>{ autosizeTa(e.target); renderPromptChips(); });
+$("#addPrompt").addEventListener("click",addPromptDialog);
 els.settingsBtn.addEventListener("click",openSettings);
 els.closeSettings.addEventListener("click",closeSettings);
 els.overlay.addEventListener("click",()=>{ if($("#ctxeditor").classList.contains("open")) closeContext(); else closeSettings(); });
@@ -1719,14 +1825,23 @@ addEventListener("pagehide",()=>{
   releaseOwner();
 });
 
-/* ============ auto-load ============ */
+/* ============ the default model ============ */
 function installedModel(name){ return !!name && modelCache.some(m=>m.name===name); }
-// The model new chats start on. The picker choice is the default whenever it is installed;
-// otherwise the alphabetically-first model (modelCache is already localeCompare-sorted).
-function defaultModel(){
+// The model new chats start on, and the one loaded on open. The saved choice wins whenever it
+// is installed; otherwise the alphabetically-first (modelCache is already localeCompare-sorted).
+function pickDefaultModel(){
   const s=state.settings;
-  if(installedModel(s.autoLoadModel)) return s.autoLoadModel;
+  if(installedModel(s.defaultModel)) return s.defaultModel;
   return (modelCache[0]&&modelCache[0].name) || s.model || "";
+}
+// The picker offers installed models only, so an unset default would have nothing selected and
+// silently disagree with what new chats actually use. Settling it once the model list arrives
+// keeps the control honest. A saved-but-uninstalled choice is left alone: it is still the
+// user's, it is shown as missing, and pulling that model makes it work again.
+function settleDefaultModel(){
+  const s=state.settings;
+  if(s.defaultModel || !modelCache.length) return;
+  s.defaultModel=modelCache[0].name; save();
 }
 // A fresh open lands on an empty chat. If the newest chat is already empty, reuse it rather
 // than stacking an identical one on every launch.
@@ -1738,26 +1853,27 @@ function freshChat(){
   return newConversation();
 }
 // Point an empty chat at the default model. Boot needs this as a second pass, because the chat
-// is opened before /api/tags has answered and defaultModel() can't resolve until it has.
+// is opened before /api/tags has answered and pickDefaultModel() can't resolve until it has.
 // A chat with history is never repointed.
 function applyDefaultModel(c){
-  const d=defaultModel();
+  const d=pickDefaultModel();
   if(!d || c.model===d || pathOf(c).length) return;
   c.model=d; state.settings.model=d; els.model.value=d; save();
   updateCap(); updateLoadUI();
 }
-// Offered once, on the first boot that finds any model installed. Either answer records that
-// the question was asked, so it never comes back. Returns true if it just turned auto-load on,
-// so the caller can honour it immediately rather than waiting for the next fresh open.
+// Asked on the first boot that finds any model installed, and again after a factory reset,
+// which clears the answer. Either reply records that the question was put, so it never nags.
+// Returns true when it has just switched loading on, so the caller can honour that straight
+// away rather than leaving it until the next fresh open.
 async function firstRunPrompt(){
   const s=state.settings;
   if(s.autoLoadPrompted || !modelCache.length) return false;
-  let pick=modelCache[0].name;
+  let pick=(installedModel(s.defaultModel) ? s.defaultModel : modelCache[0].name);
   const choice=await dialog("Load a model automatically?","",
     [{label:"Not now",value:"no",cancel:true},{label:"Set",value:"yes",primary:true}],
     { build(box){
         const p=document.createElement("p");
-        p.textContent="Pick a model to load whenever you open the app. New chats will start on it too. You can change this any time in Settings.";
+        p.textContent="Pick the model to load whenever you open the app. New chats will start on it too. You can change this any time in Settings.";
         p.style.margin="0 0 14px";
         const sel=document.createElement("select");
         sel.innerHTML=modelCache.map(m=>`<option value="${escAttr(m.name)}">${esc(m.name)}</option>`).join("");
@@ -1765,14 +1881,14 @@ async function firstRunPrompt(){
         box.append(p,sel);
       } });
   s.autoLoadPrompted=true;
-  if(choice==="yes"){ s.autoLoad=true; s.autoLoadModel=pick; }
+  if(choice==="yes"){ s.autoLoad=true; s.defaultModel=pick; }
   save();
   return choice==="yes";
 }
 async function autoLoadOnOpen(){
   const s=state.settings;
   if(!s.autoLoad) return;
-  const want=s.autoLoadModel || (modelCache[0]&&modelCache[0].name) || "";
+  const want=s.defaultModel || (modelCache[0]&&modelCache[0].name) || "";
   if(!want) return;
   if(!installedModel(want)){
     // Report and stop. Nothing is downloaded, and the setting is kept so pulling the model
@@ -1801,7 +1917,8 @@ async function boot(){
   openConversation();
   connectLauncher();             // not awaited: the terminal should see us immediately
   await loadModels();
-  if(fresh) applyDefaultModel(currentConv());   // only now can defaultModel() resolve
+  settleDefaultModel();
+  if(fresh) applyDefaultModel(currentConv());   // only now can pickDefaultModel() resolve
   await reassertKeepAlive();     // cancels a grace window left behind by a refresh
   const justEnabled=await firstRunPrompt();
   if(fresh || justEnabled) await autoLoadOnOpen();   // saying yes should load now, not next time
