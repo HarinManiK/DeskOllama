@@ -18,6 +18,7 @@ Environment:
     OLLAMA_HOST    where Ollama is listening (default http://localhost:11434)
 """
 
+import ctypes
 import http.server
 import json
 import os
@@ -30,10 +31,21 @@ import webbrowser
 from urllib.parse import parse_qs, urlparse
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+LOG = os.path.join(ROOT, "harness.log")
 PORT = int(os.environ.get("HARNESS_PORT", "8777"))
-GRACE = 5.0          # seconds the page has to come back before we call it closed
+# Long enough for a refresh to reconnect (~200ms on localhost), short enough that a real close
+# frees the memory while you are still letting go of the mouse. It cannot be zero: a refresh
+# drops the socket exactly like a close does, and waiting to see whether the page comes back is
+# the only thing that tells them apart.
+GRACE = 1.5
+# How often the held-open connection is written to. This is what actually detects a closed
+# tab, since a dead socket only reveals itself when something is sent, and on Windows often
+# not until the second attempt. Keep it well under the grace or detection latency, not the
+# grace, becomes what you wait for.
+PING = 0.25
 STARTUP_WAIT = 60.0  # give up if the browser never connects at all
 UNLOAD_WAIT = 15.0   # how long to wait for Ollama to actually free the memory
+TAKEOVER_WAIT = 25.0 # how long to wait for a shutting-down predecessor to release the port
 
 
 def ollama_base():
@@ -52,10 +64,59 @@ _clients = 0
 _seen_client = False
 _empty_since = None    # monotonic time the client count last hit zero
 _unload_wanted = True  # mirrors the page's "unload when the app closes" setting
+_closing = False       # past the point of no return: a relaunch must not adopt us
+_hidden = False        # the console window has been hidden, so nobody can read stdout
+_logf = None
 
 
 def say(msg):
-    print(msg, flush=True)
+    """Goes to the console while there is one, and always to harness.log, which is the
+    only record once the window is hidden."""
+    global _logf
+    line = time.strftime("%H:%M:%S ") + msg
+    if not _hidden:
+        print(line, flush=True)
+    try:
+        if _logf is None:
+            # Truncate rather than grow without bound; the interesting log is this run's.
+            mode = "a" if os.path.exists(LOG) and os.path.getsize(LOG) < 512 * 1024 else "w"
+            _logf = open(LOG, mode, encoding="utf-8")
+            _logf.write("\n=== %s ===\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+        _logf.write(line + "\n")
+        _logf.flush()
+    except Exception:
+        pass
+
+
+def owns_console():
+    """True when this process is the only one attached to the console, which is the case
+    when run.bat handed us one of our own. Run from a shell you already had open, cmd is
+    attached too, and hiding the window would be hiding *your* terminal."""
+    try:
+        buf = (ctypes.c_uint * 8)()
+        return ctypes.windll.kernel32.GetConsoleProcessList(buf, 8) == 1
+    except Exception:
+        return False
+
+
+def hide_console():
+    """Once the server is up and the browser is on its way there is nothing left to read,
+    so the window gets out of the way. A failure before this point keeps its console, which
+    is the whole reason for hiding late rather than launching with pythonw."""
+    global _hidden
+    if os.environ.get("HARNESS_CONSOLE"):
+        say("HARNESS_CONSOLE set, keeping this window")
+        return
+    if not owns_console():
+        say("started from an existing terminal, leaving it visible")
+        return
+    try:
+        handle = ctypes.windll.kernel32.GetConsoleWindow()
+        if handle:
+            ctypes.windll.user32.ShowWindow(handle, 0)   # SW_HIDE
+            _hidden = True
+    except Exception:
+        pass   # not Windows, or no console to hide
 
 
 # ---------------------------------------------------------------- Ollama
@@ -113,7 +174,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         route = urlparse(self.path)
         if route.path == "/__launcher":
-            return self.send_json({"launcher": True, "grace": GRACE})
+            # `state` is what stops a relaunch adopting a server that is already unloading:
+            # the port stays bound for the whole of that, so being reachable is not the same
+            # as being usable.
+            return self.send_json({"launcher": True, "grace": GRACE,
+                                   "state": "closing" if _closing else "running"})
         if route.path == "/__alive":
             return self.stream_alive(parse_qs(route.query))
         return super().do_GET()
@@ -147,7 +212,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             while True:
                 self.wfile.write(b": ping\n\n")
                 self.wfile.flush()
-                time.sleep(1)
+                time.sleep(PING)
         except Exception:
             pass
         finally:
@@ -159,29 +224,49 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             say("page closed (%d open)" % n)
 
 
-def existing_launcher():
+def launcher_state():
+    """"running", "closing", or None when the port belongs to something that isn't us."""
     try:
         with urllib.request.urlopen(
             "http://127.0.0.1:%d/__launcher" % PORT, timeout=1
         ) as r:
-            return json.loads(r.read()).get("launcher") is True
+            data = json.loads(r.read())
+        return data.get("state", "running") if data.get("launcher") else None
     except Exception:
-        return False
+        return None
+
+
+def bind_server(wait=0.0):
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            return http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        except OSError:
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(0.25)
 
 
 def main():
+    global _closing
     url = "http://localhost:%d/index.html" % PORT
 
-    try:
-        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    except OSError:
-        if existing_launcher():
+    httpd = bind_server()
+    if httpd is None:
+        state = launcher_state()
+        if state == "running":
             say("Local Harness is already running. Opening that session.")
             webbrowser.open(url)
             return 0
-        say("Port %d is in use by something else." % PORT)
-        say("Set HARNESS_PORT to pick another, e.g.  set HARNESS_PORT=8890")
-        return 1
+        if state == "closing":
+            # It still answers, but it is partway through unloading and about to exit.
+            # Adopting it would hand the browser a server that dies a second later.
+            say("the previous session is shutting down, waiting for it to finish")
+            httpd = bind_server(TAKEOVER_WAIT)
+        if httpd is None:
+            say("Port %d is in use by something else." % PORT)
+            say("Set HARNESS_PORT to pick another, e.g.  set HARNESS_PORT=8890")
+            return 1
 
     httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -189,12 +274,12 @@ def main():
     say("Local Harness")
     say("  serving  %s" % url)
     say("  ollama   %s" % OLLAMA)
-    say("")
+    say("  log      %s" % LOG)
     if not resident_models():
         say("(ollama has nothing loaded right now)")
     webbrowser.open(url)
     say("opening your browser. close the tab to unload and quit.")
-    say("")
+    hide_console()
 
     started = time.monotonic()
     try:
@@ -213,10 +298,9 @@ def main():
             if empty is not None and time.monotonic() - empty >= GRACE:
                 break
     except KeyboardInterrupt:
-        say("")
         say("interrupted.")
 
-    say("")
+    _closing = True   # from here on a relaunch must wait us out rather than adopt us
     if _unload_wanted:
         unload_all()
     else:
@@ -228,8 +312,9 @@ def main():
 if __name__ == "__main__":
     code = main()
     # The window is this process's own, so a failure would otherwise vanish with it.
-    # A clean exit still closes immediately, which is the point of the launcher.
-    if code:
+    # A clean exit still closes immediately, which is the point of the launcher. Once the
+    # console is hidden there is nobody to press Enter, so don't wait for one.
+    if code and not _hidden:
         try:
             input("\npress Enter to close ")
         except Exception:

@@ -348,8 +348,7 @@
 
 <div id="blocked">
   <h2>Already open in another tab</h2>
-  <p>Local Harness runs in one tab at a time, so the two can't fight over which model is loaded.</p>
-  <button class="btn primary" id="takeover">Use this tab instead</button>
+  <p>Local Harness runs in one tab at a time, so the two can't fight over which model is loaded.<br><br>Switch to the tab that already has it open, and close this one.</p>
 </div>
 
 <div id="tip"></div>
@@ -1766,12 +1765,14 @@ function showBlocked(){
 }
 // Another tab took the lock while this one was running. Abort first: the existing stream
 // handler turns that into a commit, so a takeover never discards a partly-streamed reply.
+// There is no way back from here by design. A tab cannot reliably focus a sibling, so rather
+// than a button that works sometimes, this one just says where the app is. A crashed owner is
+// still no dead end: its lock goes stale after STALE_MS and the next tab claims it.
 function loseOwnership(){
   if(controller) controller.abort();
   if(loadAbort) loadAbort.abort();
   showBlocked();
 }
-$("#takeover").addEventListener("click",()=>{ claimOwner(); location.reload(); });
 
 /* ============ close-time unload ============
    A short TTL rather than a hard eject, because pagehide also fires on refresh. A refresh
