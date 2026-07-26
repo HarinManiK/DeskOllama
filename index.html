@@ -198,6 +198,7 @@
   .qrow textarea{flex:1;resize:none;overflow:hidden;background:transparent;border:none;padding:0;
     font-size:13px;line-height:1.45;min-height:0}
   .qrow textarea:focus{border:none;outline:none}
+  .qrow .qhint{flex:0 0 auto;align-self:flex-end;font-size:11px;color:var(--muted);white-space:nowrap}
   .qrow .qacts{display:flex;gap:2px;flex:0 0 auto;opacity:0;transition:.12s}
   .qrow:hover .qacts,.qrow.editing .qacts{opacity:1}
   .qrow .qacts button{width:24px;height:24px;display:grid;place-items:center;border-radius:6px;color:var(--muted)}
@@ -538,8 +539,10 @@ function nextChatTitle(){
 }
 function newConversation(){
   const id=uid();
-  // New chats start on the auto-load model, not on whatever was last picked.
-  state.conversations[id]={id, title:nextChatTitle(), model:pickDefaultModel()||state.settings.model, nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
+  // New chats follow the picker, so switching model once carries through the chats you open
+  // after it. The default model is what a fresh open starts on, not a floor every new chat
+  // is dragged back to.
+  state.conversations[id]={id, title:nextChatTitle(), model:state.settings.model||pickDefaultModel(), nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
   state.currentId=id; compose=null; save(); return state.conversations[id];
 }
 function migrateConv(c){            // old flat .messages → node chain
@@ -1168,6 +1171,8 @@ async function generate(c){
    still deciding" holds the whole queue: an open edit, a drag in progress, a rewound prompt
    sitting in the composer, or a failure worth noticing. Nothing later jumps ahead. */
 let queueEditing=null;   // id of the row being edited
+let queueDraft=null;     // its in-progress text, so a re-render mid-drain cannot lose it
+let queueFocusPending=false;
 let queueDragging=false;
 let queueHalted=false;   // an error stopped the drain; sending or editing clears it
 let queueHaltMsg="";     // why, in the words shown above the rows
@@ -1231,12 +1236,21 @@ function renderQueue(){
   box.innerHTML="";
   const c=state.conversations[state.currentId]; if(!c) return;
   const q=queueOf(c);
-  if(queueHalted && q.length){
+  // Say out loud when the queue is holding, and why. Silence here is what made it look like
+  // messages were firing at random.
+  const why = queueHalted ? (queueHaltMsg||"Paused.")
+            : queueEditing ? "Paused while you edit."
+            : compose      ? "Paused. Send or cancel the message below to continue."
+            : "";
+  if(why && q.length){
     const h=document.createElement("div"); h.className="qhalt";
-    h.innerHTML=`<span>${esc(queueHaltMsg||"Paused.")} ${q.length} message${q.length===1?"":"s"} queued.</span>`;
-    const b=document.createElement("button"); b.textContent="Resume";
-    b.onclick=()=>{ resumeQueue(); renderQueue(); drainQueue(); };
-    h.appendChild(b); box.appendChild(h);
+    h.innerHTML=`<span>${esc(why)} ${q.length} message${q.length===1?"":"s"} queued.</span>`;
+    if(queueHalted){
+      const b=document.createElement("button"); b.textContent="Resume";
+      b.onclick=()=>{ resumeQueue(); renderQueue(); drainQueue(); };
+      h.appendChild(b);
+    }
+    box.appendChild(h);
   }
   q.forEach((item,i)=>box.appendChild(queueRow(c,item,i)));
   renderEmpty();   // a pending queue means the chat is no longer "empty"
@@ -1246,21 +1260,30 @@ function queueRow(c,item,index){
   row.className="qrow"+(queueEditing===item.id?" editing":"");
   if(queueEditing===item.id){
     const ta=document.createElement("textarea");
-    ta.value=item.text;
+    // Draining re-renders the list, which would otherwise throw away what you have typed
+    // so far. The draft outlives the row.
+    ta.value = queueDraft!=null ? queueDraft : item.text;
+    const finish=()=>{ queueEditing=null; queueDraft=null; renderQueue(); drainQueue(); };
     const commit=()=>{
       const v=ta.value.trim();
-      queueEditing=null;
       if(v) item.text=v; else queueOf(c).splice(queueOf(c).indexOf(item),1);   // emptied means dropped
-      touch(c); save(); renderQueue(); drainQueue();
+      touch(c); save(); finish();
     };
-    ta.addEventListener("input",()=>autosizeTa(ta));
+    ta.addEventListener("input",()=>{ queueDraft=ta.value; autosizeTa(ta); });
     ta.addEventListener("keydown",e=>{
       if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); commit(); }
-      else if(e.key==="Escape"){ e.preventDefault(); e.stopPropagation(); queueEditing=null; renderQueue(); drainQueue(); }
+      else if(e.key==="Escape"){ e.preventDefault(); e.stopPropagation(); finish(); }
     });
-    ta.addEventListener("blur",commit);
-    row.appendChild(ta);
-    requestAnimationFrame(()=>{ autosizeTa(ta); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); });
+    // Deliberately no commit on blur. Clicking away to read the reply is not "I am done
+    // editing", and treating it as one is what let the next message fire out from under you.
+    const hint=document.createElement("div"); hint.className="qhint"; hint.textContent="Enter saves · Esc cancels";
+    row.append(ta,hint);
+    requestAnimationFrame(()=>{
+      autosizeTa(ta);
+      // Only on opening the editor. Stealing focus back on every re-render would fight you
+      // for the composer while a queue drains.
+      if(queueFocusPending){ queueFocusPending=false; ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
+    });
     return row;
   }
   row.draggable=true;
@@ -1269,7 +1292,7 @@ function queueRow(c,item,index){
   const mk=(title,icon,fn)=>{ const b=document.createElement("button"); b.title=title; b.innerHTML=icon; b.onclick=fn; return b; };
   acts.append(
     // Opening an edit is also the way to say "hold on": the drain waits for it to close.
-    mk("Edit",ICON_PENCIL,()=>{ queueEditing=item.id; resumeQueue(); renderQueue(); }),
+    mk("Edit",ICON_PENCIL,()=>{ queueEditing=item.id; queueDraft=null; queueFocusPending=true; resumeQueue(); renderQueue(); }),
     mk("Remove",ICON_X,()=>{ queueOf(c).splice(queueOf(c).indexOf(item),1); touch(c); save(); renderQueue(); drainQueue(); })
   );
   row.append(txt,acts);

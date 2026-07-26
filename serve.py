@@ -65,17 +65,23 @@ _seen_client = False
 _empty_since = None    # monotonic time the client count last hit zero
 _unload_wanted = True  # mirrors the page's "unload when the app closes" setting
 _closing = False       # past the point of no return: a relaunch must not adopt us
-_hidden = False        # the console window has been hidden, so nobody can read stdout
 _logf = None
+
+# Launched by run.bat this runs under pythonw, which has no console and no stdout. Run as
+# `python serve.py` from a terminal it does, and printing is useful there.
+HAS_CONSOLE = bool(getattr(sys, "stdout", None))
 
 
 def say(msg):
-    """Goes to the console while there is one, and always to harness.log, which is the
-    only record once the window is hidden."""
+    """Goes to the console when there is one, and always to harness.log, which is the only
+    record when there is not."""
     global _logf
     line = time.strftime("%H:%M:%S ") + msg
-    if not _hidden:
-        print(line, flush=True)
+    if HAS_CONSOLE:
+        try:
+            print(line, flush=True)
+        except Exception:
+            pass
     try:
         if _logf is None:
             # Truncate rather than grow without bound; the interesting log is this run's.
@@ -88,35 +94,16 @@ def say(msg):
         pass
 
 
-def owns_console():
-    """True when this process is the only one attached to the console, which is the case
-    when run.bat handed us one of our own. Run from a shell you already had open, cmd is
-    attached too, and hiding the window would be hiding *your* terminal."""
-    try:
-        buf = (ctypes.c_uint * 8)()
-        return ctypes.windll.kernel32.GetConsoleProcessList(buf, 8) == 1
-    except Exception:
-        return False
-
-
-def hide_console():
-    """Once the server is up and the browser is on its way there is nothing left to read,
-    so the window gets out of the way. A failure before this point keeps its console, which
-    is the whole reason for hiding late rather than launching with pythonw."""
-    global _hidden
-    if os.environ.get("HARNESS_CONSOLE"):
-        say("HARNESS_CONSOLE set, keeping this window")
-        return
-    if not owns_console():
-        say("started from an existing terminal, leaving it visible")
+def alert(msg):
+    """A startup failure has to reach the user. Under pythonw there is no console to print
+    to, so it goes up as a message box; the log always gets it either way."""
+    say(msg)
+    if HAS_CONSOLE:
         return
     try:
-        handle = ctypes.windll.kernel32.GetConsoleWindow()
-        if handle:
-            ctypes.windll.user32.ShowWindow(handle, 0)   # SW_HIDE
-            _hidden = True
+        ctypes.windll.user32.MessageBoxW(None, msg, "Local Harness", 0x10)   # MB_ICONERROR
     except Exception:
-        pass   # not Windows, or no console to hide
+        pass
 
 
 # ---------------------------------------------------------------- Ollama
@@ -264,8 +251,9 @@ def main():
             say("the previous session is shutting down, waiting for it to finish")
             httpd = bind_server(TAKEOVER_WAIT)
         if httpd is None:
-            say("Port %d is in use by something else." % PORT)
-            say("Set HARNESS_PORT to pick another, e.g.  set HARNESS_PORT=8890")
+            alert("Port %d is already in use by something that is not Local Harness, so the "
+                  "server could not start.\n\nClose whatever is using it, or set HARNESS_PORT "
+                  "to another port (for example: set HARNESS_PORT=8890)." % PORT)
             return 1
 
     httpd.daemon_threads = True
@@ -279,7 +267,6 @@ def main():
         say("(ollama has nothing loaded right now)")
     webbrowser.open(url)
     say("opening your browser. close the tab to unload and quit.")
-    hide_console()
 
     started = time.monotonic()
     try:
@@ -289,8 +276,8 @@ def main():
                 seen, empty = _seen_client, _empty_since
             if not seen:
                 if time.monotonic() - started > STARTUP_WAIT:
-                    say("the page never connected. giving up.")
-                    say("open %s by hand if the browser did not." % url)
+                    alert("The page never connected, so Local Harness is shutting down.\n\n"
+                          "If your browser did not open, try %s by hand." % url)
                     return 1
                 continue
             # A refresh reconnects within the grace window, so only a real close
@@ -311,10 +298,9 @@ def main():
 
 if __name__ == "__main__":
     code = main()
-    # The window is this process's own, so a failure would otherwise vanish with it.
-    # A clean exit still closes immediately, which is the point of the launcher. Once the
-    # console is hidden there is nobody to press Enter, so don't wait for one.
-    if code and not _hidden:
+    # Only meaningful when run from a terminal: it keeps the error on screen. Under pythonw
+    # there is nobody to press Enter, and alert() has already shown a message box.
+    if code and HAS_CONSOLE:
         try:
             input("\npress Enter to close ")
         except Exception:
