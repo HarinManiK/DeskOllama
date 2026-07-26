@@ -226,4 +226,12 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    # The window is this process's own, so a failure would otherwise vanish with it.
+    # A clean exit still closes immediately, which is the point of the launcher.
+    if code:
+        try:
+            input("\npress Enter to close ")
+        except Exception:
+            pass
+    sys.exit(code)
