@@ -782,11 +782,21 @@ async function loadModel(name){
       loadingName=null; loadAbort=null;
       if(loadPromise===p) loadPromise=null;   // never clear a newer load's handle
       await refreshPs(); els.input.focus();
+      // A load is one of the things that holds the queue, so finishing one has to release it.
+      // Messages typed while you waited on a manual Load would otherwise sit there for good,
+      // because nothing else was going to look at the queue again.
+      drainQueue();
     }
   })();
   loadPromise=p; return p;
 }
-function cancelLoad(){ if(loadAbort) loadAbort.abort(); }
+function cancelLoad(){
+  if(!loadAbort) return;
+  loadAbort.abort();
+  // Cancelling is a stop, so whatever is waiting behind it waits too. Without this the
+  // finally below would release the queue and immediately start the load you just cancelled.
+  halt("Paused: loading was cancelled.");
+}
 // Resolves true once `name` is resident. A load already in flight is awaited rather than
 // refused, so sending while boot auto-load is still running waits for it instead of
 // reporting a bogus failure.
