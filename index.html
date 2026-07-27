@@ -718,6 +718,7 @@ function pathUsage(c){
   }
   return {used:0, exact:true, node:null};
 }
+const tokens = n => n.toLocaleString()+" token"+(n===1?"":"s");
 function updateCtxRing(){
   const ring=$("#ctxRing"); if(!ring) return;
   const c=currentConv();
@@ -735,8 +736,8 @@ function updateCtxRing(){
   const pct=frac*100, left=Math.max(0,limit-used);
   const lines=[
     `Context window: ${limit.toLocaleString()} tokens`,
-    `Used: ${pct.toFixed(1)}% (${used.toLocaleString()})`,
-    `Left: ${(100-pct).toFixed(1)}% (${left.toLocaleString()})`,
+    `Used: ${pct.toFixed(1)}% (${tokens(used)})`,
+    `Left: ${(100-pct).toFixed(1)}% (${tokens(left)})`,
   ];
   if(!exact) lines.push(`At least this much. Exact after the next reply.`);
   if(frac>=0.9) lines.push(`Nearly full. Ollama starts dropping the oldest messages silently.`);
