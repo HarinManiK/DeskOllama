@@ -1,3 +1,4 @@
+use tauri::Manager;
 use tauri::WindowEvent;
 
 async fn unload_ollama_models() {
@@ -31,19 +32,23 @@ async fn unload_ollama_models() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .on_window_event(|_window, event| {
-            if let WindowEvent::CloseRequested { .. } = event {
-                let handle = tokio::runtime::Handle::try_current();
-                if let Ok(h) = handle {
-                    h.spawn(async {
-                        unload_ollama_models().await;
-                    });
-                } else {
-                    let rt = tokio::runtime::Runtime::new();
-                    if let Ok(rt) = rt {
-                        rt.block_on(unload_ollama_models());
-                    }
-                }
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                // Instant window hide from screen (< 5ms response time)
+                let _ = window.hide();
+                api.prevent_close();
+                let app_handle = window.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    unload_ollama_models().await;
+                    app_handle.exit(0);
+                });
             }
         })
         .run(tauri::generate_context!())

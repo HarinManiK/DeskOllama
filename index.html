@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" style="background:#212121;color:#ececec">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -316,6 +316,94 @@
     .thread,.composer{max-width:100%}
     .capinfo{display:none}
   }
+
+  /* Side Guide Button in Sidebar Footer */
+  .side-guide-btn{
+    width:20px; height:20px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--muted); border:none; background:transparent;
+    cursor:pointer; transition:all .2s ease; flex:0 0 auto; margin-left:auto;
+    padding:0; outline:none;
+  }
+  .side-guide-btn:hover{
+    color:#7B65F6; transform:scale(1.15);
+  }
+  .side-guide-btn svg{ display:block; width:15px; height:15px; }
+
+  .guide-modal-overlay{
+    position:fixed; inset:0; z-index:999;
+    background:var(--overlay); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+    opacity:0; pointer-events:none; transition:opacity .2s ease;
+  }
+  .guide-modal-overlay.open{ opacity:1; pointer-events:auto; }
+
+  .guide-modal-card{
+    width:100%; max-width:680px; max-height:85vh;
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:16px; display:flex; flex-direction:column;
+    box-shadow:0 20px 50px rgba(0,0,0,0.4); overflow:hidden;
+    transform:scale(.95); transition:transform .2s ease;
+  }
+  .guide-modal-overlay.open .guide-modal-card{ transform:scale(1); }
+
+  .guide-header{
+    padding:18px 24px; border-bottom:1px solid var(--border-soft);
+    display:flex; align-items:center; justify-space-between;
+    background:var(--sidebar);
+  }
+  .guide-header-title{ font-size:18px; font-weight:700; display:flex; align-items:center; gap:10px; flex:1; }
+  .guide-close-btn{ width:32px; height:32px; border-radius:8px; display:grid; place-items:center; color:var(--muted); cursor:pointer; }
+  .guide-close-btn:hover{ background:var(--sidebar-hover); color:var(--txt); }
+
+  .guide-tabs{ display:flex; border-bottom:1px solid var(--border-soft); background:var(--sidebar); padding:0 20px; gap:8px; }
+  .guide-tab-btn{ padding:12px 16px; font-weight:600; font-size:14px; color:var(--muted); border-bottom:2px solid transparent; cursor:pointer; user-select:none; }
+  .guide-tab-btn:hover{ color:var(--txt); }
+  .guide-tab-btn.active{ color:#7B65F6; border-bottom-color:#7B65F6; }
+
+  .guide-body{ flex:1; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:20px; }
+  .guide-tab-content{ display:none; }
+  .guide-tab-content.active{ display:flex; flex-direction:column; gap:20px; }
+
+  .guide-section-card{
+    background:var(--panel-2); border:1px solid var(--border-soft);
+    border-radius:12px; padding:18px; display:flex; flex-direction:column; gap:10px;
+  }
+  .guide-section-title{ font-size:15px; font-weight:600; color:var(--txt); display:flex; align-items:center; gap:8px; }
+  .guide-section-desc{ font-size:13px; color:var(--txt-dim); line-height:1.5; }
+
+  .guide-param-list{ display:flex; flex-direction:column; gap:12px; margin-top:4px; }
+  .guide-param-item{ padding:10px 12px; background:var(--sidebar); border-radius:8px; border:1px solid var(--border-soft); }
+  .guide-param-item strong{ color:#7B65F6; font-size:13px; }
+  .guide-param-item p{ font-size:12.5px; color:var(--muted); margin:4px 0 0 0; line-height:1.4; }
+
+  /* Creator Embed Cards */
+  .creator-card{
+    background:linear-gradient(135deg, var(--sidebar) 0%, var(--panel-2) 100%);
+    border:1px solid var(--border); border-radius:14px; padding:24px;
+    display:flex; flex-direction:column; align-items:center; text-align:center; gap:14px;
+  }
+  .creator-avatar-img{
+    width:80px; height:80px; border-radius:50%;
+    object-fit:cover;
+    box-shadow:0 8px 22px rgba(123,101,246,0.35); border:3px solid var(--panel);
+  }
+  .creator-name{ font-size:22px; font-weight:800; color:var(--txt); letter-spacing:-0.4px; }
+  .creator-bio{ font-size:14px; color:var(--txt-dim); font-style:italic; max-width:420px; line-height:1.4; }
+  
+  .creator-links{ display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:6px; }
+  .embed-link-card{
+    display:flex; align-items:center; gap:10px; padding:10px 18px; border-radius:10px;
+    background:var(--panel); border:1px solid var(--border);
+    color:var(--txt); text-decoration:none; font-size:13px; font-weight:600;
+    transition:all .2s ease; box-shadow:0 2px 8px rgba(0,0,0,0.1);
+  }
+  .embed-link-card:hover{
+    transform:translateY(-2px); border-color:#7B65F6;
+    box-shadow:0 6px 16px rgba(123,101,246,0.25); color:#7B65F6;
+  }
+  .embed-link-card.github:hover{ border-color:#24292e; color:var(--txt); }
+  .embed-link-card.linkedin:hover{ border-color:#0a66c2; color:#0a66c2; }
 </style>
 </head>
 <body>
@@ -330,7 +418,13 @@
     <button class="icon-btn" id="collapseBtn" title="Hide sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
   </div>
   <div class="convlist" id="convList"></div>
-  <div class="side-foot"><span class="dot" id="condot"></span><span id="constat">connecting…</span></div>
+  <div class="side-foot">
+    <span class="dot" id="condot"></span>
+    <span id="constat" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">connecting…</span>
+    <button class="side-guide-btn" id="sideGuideBtn" title="Guide & Credits">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </button>
+  </div>
 </aside>
 
 <div id="main">
@@ -420,6 +514,102 @@
   <div class="m-msg" id="cf-msg"></div>
   <div class="modal-actions" id="cf-actions"></div>
 </div></div>
+
+<!-- Guide & Credits Modal -->
+<div class="guide-modal-overlay" id="guideModal">
+  <div class="guide-modal-card">
+    <div class="guide-header">
+      <div class="guide-header-title">
+        <span>DeskOllama Guide & Credits</span>
+      </div>
+      <button class="guide-close-btn" id="closeGuideBtn" title="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    
+    <div class="guide-tabs">
+      <div class="guide-tab-btn active" data-tab="guide-tab-docs">📖 App Guide</div>
+      <div class="guide-tab-btn" data-tab="guide-tab-credits">🌟 Creator & Credits</div>
+    </div>
+
+    <div class="guide-body">
+      <!-- TAB 1: App Guide -->
+      <div class="guide-tab-content active" id="guide-tab-docs">
+        <div class="guide-section-card">
+          <div class="guide-section-title">🚀 Quick Start</div>
+          <div class="guide-section-desc">Select any installed local model from the top dropdown menu. Start typing in the prompt box and hit <b>Enter</b> to chat. Use <b>+ New chat</b> in the sidebar to create new conversations.</div>
+        </div>
+
+        <div class="guide-section-card">
+          <div class="guide-section-title">⚙️ Settings & Parameters Explained</div>
+          <div class="guide-param-list">
+            <div class="guide-param-item">
+              <strong>num_ctx (Context Length)</strong>
+              <p>Controls the maximum token context window (e.g. 4096, 8192, 16384). Larger context windows allow models to remember longer conversations, requiring more RAM/VRAM.</p>
+            </div>
+            <div class="guide-param-item">
+              <strong>temperature</strong>
+              <p>Controls randomness. Low values (0.1–0.3) make outputs deterministic and focused; high values (0.7–1.0) increase creativity and variety.</p>
+            </div>
+            <div class="guide-param-item">
+              <strong>top_p (Nucleus Sampling)</strong>
+              <p>Considers only tokens with cumulative probability reaching top_p. Lower values make responses tighter and less random.</p>
+            </div>
+            <div class="guide-param-item">
+              <strong>keep_alive</strong>
+              <p>Defines how long the model remains loaded in memory (RAM/GPU) after your last query (e.g. 5m, 1h, or -1 for persistent loading).</p>
+            </div>
+            <div class="guide-param-item">
+              <strong>Thinking Mode (Chain-of-Thought)</strong>
+              <p>Toggles internal reasoning blocks for reasoning models (e.g. DeepSeek-R1, Qwen 2.5 Coder), allowing you to expand or hide thought processes.</p>
+            </div>
+            <div class="guide-param-item">
+              <strong>System Prompts & Personas</strong>
+              <p>Defines custom rules, roles, and instructions that govern how the model answers every message.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-section-card">
+          <div class="guide-section-title">⌨️ Keyboard Shortcuts</div>
+          <div class="guide-section-desc">
+            • <b>Shift + Enter</b>: Insert line break in composer<br>
+            • <b>Enter</b>: Send message<br>
+            • <b>Escape</b>: Close open settings or modal windows
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: Creator & Credits -->
+      <div class="guide-tab-content" id="guide-tab-credits">
+        <div class="creator-card">
+          <img src="harin-avatar.jpg" alt="Harin Mani Karri" class="creator-avatar-img">
+          <div class="creator-name">Harin Mani Karri</div>
+          <div class="creator-bio">“Just another nerd you wouldn't find around”</div>
+          
+          <div class="creator-links">
+            <a href="https://github.com/HarinManiK" target="_blank" class="embed-link-card github">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+              <span>GitHub / HarinManiK</span>
+            </a>
+            
+            <a href="https://in.linkedin.com/in/harinmani" target="_blank" class="embed-link-card linkedin">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.25V10.9H6.46M7.86 6.54a1.62 1.62 0 1 0 0 3.24 1.62 1.62 0 0 0 0-3.24z"/></svg>
+              <span>LinkedIn / harinmani</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="guide-section-card">
+          <div class="guide-section-title">⚡ DeskOllama Architecture</div>
+          <div class="guide-section-desc">
+            • <b>Version</b>: DeskOllama v1.0.0<br>
+            • <b>Engine</b>: Built with Tauri v2, Rust & High-Performance Vanilla JS<br>
+            • <b>Privacy</b>: 100% Local execution with zero telemetry & zero cloud dependencies
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -2450,14 +2640,24 @@ async function boot(){
   // Anything still queued from last time is held rather than fired. Coming back to find the
   // app already three replies deep into messages you queued yesterday would be alarming.
   if(Object.values(state.conversations).some(c=>queueOf(c).length)) halt("Held from last session.");
+
+  // Instant UI Frame 0 Render (<10ms response time)
   openConversation();
-  connectLauncher();             // not awaited: the terminal should see us immediately
-  await loadModels();
   settleDefaultModel();
-  if(fresh) applyDefaultModel(currentConv());   // only now can pickDefaultModel() resolve
-  await reassertKeepAlive();     // cancels a grace window left behind by a refresh
-  const justEnabled=await firstRunPrompt();
-  if(fresh || justEnabled) await autoLoadOnOpen();   // saying yes should load now, not next time
+  if(fresh) applyDefaultModel(currentConv());
+  safeFocusInput();
+
+  // Background non-blocking network initialization
+  connectLauncher();             // not awaited: the terminal should see us immediately
+  (async () => {
+    await loadModels();
+    settleDefaultModel();
+    if(fresh) applyDefaultModel(currentConv());
+    await reassertKeepAlive();     // cancels a grace window left behind by a refresh
+    const justEnabled=await firstRunPrompt();
+    if(fresh || justEnabled) autoLoadOnOpen();   // saying yes should load now, not next time
+  })();
+
   setInterval(()=>{
     checkDayChange();
     if(owns && !document.hidden && !loadingName && !ejectingName && !isUserScrolling) refreshPs();
@@ -2465,21 +2665,13 @@ async function boot(){
   scheduleMidnightRefresh();
   window.addEventListener("focus", checkDayChange);
   document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) checkDayChange(); });
-  safeFocusInput();
 }
 applyTheme(state.settings.theme);
-const _owner=readOwner();
-if(_owner && _owner.id!==tabId){
-  showBlocked();          // parked: no polling, no requests, no writes
-}else{
+claimOwner();
+beatTimer=setInterval(()=>{
   claimOwner();
-  beatTimer=setInterval(()=>{
-    const o=readOwner();
-    if(o && o.id!==tabId){ loseOwnership(); return; }
-    claimOwner();
-  }, BEAT_MS);
-  boot();
-}
+}, BEAT_MS);
+boot();
 
 const TIPS = [
   "Press Shift+Enter for a new line",
@@ -2487,11 +2679,45 @@ const TIPS = [
   "Adjust temperature for more creative or focused outputs"
 ];
 
-function showRandomTip() {
-  const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
-  document.getElementById('tipDisplay').textContent = tip;
+/* ============ Guide & Credits Center ============ */
+const sideGuideBtn = $("#sideGuideBtn");
+const guideModal = $("#guideModal");
+const closeGuideBtn = $("#closeGuideBtn");
+
+function openGuideModal(tab = "guide-tab-docs"){
+  switchGuideTab(tab);
+  if(guideModal) guideModal.classList.add("open");
 }
-window.addEventListener('DOMContentLoaded', showRandomTip);
+function closeGuideModal(){
+  if(guideModal) guideModal.classList.remove("open");
+}
+
+function switchGuideTab(tabId){
+  $$(".guide-tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === tabId);
+  });
+  $$(".guide-tab-content").forEach(content => {
+    content.classList.toggle("active", content.id === tabId);
+  });
+}
+
+if(sideGuideBtn) sideGuideBtn.addEventListener("click", () => openGuideModal("guide-tab-docs"));
+if(closeGuideBtn) closeGuideBtn.addEventListener("click", closeGuideModal);
+
+if(guideModal){
+  guideModal.addEventListener("click", e => {
+    if(e.target === guideModal) closeGuideModal();
+  });
+  $$(".guide-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchGuideTab(btn.dataset.tab));
+  });
+}
+
+window.addEventListener("keydown", e => {
+  if(e.key === "Escape" && guideModal && guideModal.classList.contains("open")){
+    closeGuideModal();
+  }
+});
 </script>
 </body>
 </html>

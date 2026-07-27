@@ -1,2 +1,7 @@
+node_modules/
+src-tauri/target/
 __pycache__/
 harness.log
+*.log
+.DS_Store
+Thumbs.db
