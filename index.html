@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Local Harness</title>
+<title>DeskOllama</title>
 <style>
   :root{
     --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -47,7 +47,14 @@
   /* Sidebar */
   #sidebar{width:270px;flex:0 0 270px;background:var(--sidebar);display:flex;flex-direction:column;border-right:1px solid var(--border-soft);transition:margin-left .2s}
   #sidebar.collapsed{margin-left:-270px}
-  .side-top{padding:10px;display:flex;gap:8px}
+  .brand-header{padding:18px 16px 8px;display:flex;align-items:center;gap:12px}
+  .brand-logo-img{width:44px;height:44px;object-fit:contain;flex:0 0 auto}
+  .brand-title{font-size:26px;font-weight:700;letter-spacing:-0.5px;user-select:none;line-height:1}
+  .brand-desk{color:#7B65F6}
+  .brand-ollama{color:var(--txt)}
+  html[data-theme="light"] .brand-ollama{color:#333333}
+  html[data-theme="dark"] .brand-ollama{color:#ececec}
+  .side-top{padding:4px 10px 10px;display:flex;gap:8px}
   .newchat{flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);font-weight:500;font-size:14px}
   .newchat:hover{background:var(--sidebar-hover)}
   .icon-btn{width:38px;height:38px;flex:0 0 auto;display:grid;place-items:center;border-radius:10px;color:var(--txt-dim)}
@@ -314,6 +321,10 @@
 <body>
 
 <aside id="sidebar">
+  <div class="brand-header">
+    <img src="DeskOllama-logo-nobg.png" alt="DeskOllama" class="brand-logo-img">
+    <span class="brand-title"><span class="brand-desk">Desk</span><span class="brand-ollama">Ollama</span></span>
+  </div>
   <div class="side-top">
     <button class="newchat" id="newChat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>New chat</button>
     <button class="icon-btn" id="collapseBtn" title="Hide sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
@@ -1018,8 +1029,13 @@ function renameConv(id,el){
   t.addEventListener("blur",fin,{once:true});
   t.addEventListener("keydown",e=>{ if(e.key==="Enter"){e.preventDefault();t.blur();} });
 }
-function deleteConv(id){
-  if(!confirm("Delete this chat?")) return;
+async function deleteConv(id){
+  const c = state.conversations[id];
+  const name = c ? c.title : "this chat";
+  const choice = await dialog("Delete Chat",
+    `Are you sure you want to delete <b>${esc(name)}</b>?`,
+    [CANCEL_BTN, {label:"Delete", value:"del", primary:true}]);
+  if(choice !== "del") return;
   // Deleting the chat a reply is streaming into would commit that reply to a dropped record.
   if(live && live.convId===id && controller) controller.abort();
   delete state.conversations[id]; compose=null;
