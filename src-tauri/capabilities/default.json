@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/capability/v2",
+  "identifier": "default",
+  "description": "Default capabilities for Local Harness",
+  "windows": ["*"],
+  "permissions": [
+    "core:default"
+  ]
+}
