@@ -53,13 +53,16 @@
   .icon-btn{width:38px;height:38px;flex:0 0 auto;display:grid;place-items:center;border-radius:10px;color:var(--txt-dim)}
   .icon-btn:hover{background:var(--sidebar-hover)}
   .convlist{flex:1;overflow-y:auto;padding:6px}
-  .conv{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:9px;cursor:pointer;font-size:14px;color:var(--txt-dim)}
+  .conv{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;font-size:14px;color:var(--txt-dim)}
   .conv:hover{background:var(--sidebar-hover)}
   .conv.active{background:var(--sidebar-active);color:var(--txt)}
-  .conv .title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .conv .title[contenteditable]{outline:1px solid var(--primary);border-radius:4px;padding:2px 4px;text-overflow:clip;overflow-x:auto;white-space:pre;scrollbar-width:none}
+  .conv-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .conv .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-weight:500;color:var(--txt-dim)}
+  .conv.active .title{color:var(--txt);font-weight:600}
+  .conv .title[contenteditable]{outline:1px solid var(--primary);border-radius:4px;padding:2px 4px;text-overflow:clip;overflow-x:auto;white-space:pre;scrollbar-width:none;color:var(--txt)}
   .conv .title[contenteditable]::-webkit-scrollbar{display:none}
-  .conv .menu{opacity:0;display:flex;gap:2px}
+  .conv .meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+  .conv .menu{opacity:0;display:flex;gap:2px;flex:0 0 auto}
   .conv:hover .menu,.conv.active .menu{opacity:1}
   .conv .menu button{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:var(--muted)}
   .conv .menu button:hover{background:var(--border);color:var(--txt)}
@@ -73,8 +76,8 @@
   .modelsel{min-width:160px;width:auto;font-weight:600;background:transparent;border-color:transparent;color:var(--txt)}
   .modelsel:hover,.modelsel:focus{background:var(--panel-2);border-color:transparent}
   .modelsel option{background:var(--panel);color:var(--txt);font-weight:400}
-  .capinfo{font-size:11.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
-  .think-toggle{width:32px;height:32px;display:inline-grid;place-items:center;border-radius:50%;color:var(--muted);border:1px solid var(--border);cursor:pointer;flex:0 0 auto}
+  .capinfo{font-size:11.5px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+  .think-toggle{width:32px;height:32px;border-radius:50%;color:var(--muted);border:1px solid var(--border);cursor:pointer;flex:0 0 auto;display:inline-grid;place-items:center;transition:.15s}
   .think-toggle:hover{background:var(--panel-2);color:var(--txt)}
   .think-toggle.on{color:#fff;background:var(--primary);border-color:var(--primary)}
   .think-toggle.on:hover{color:#fff}
@@ -94,7 +97,7 @@
   .loadbtn.load{color:var(--good);border-color:var(--good)}
   .loadbtn:disabled{opacity:.55;cursor:default}
   .grow{flex:1}
-  .tb-btn{padding:7px 9px;border-radius:9px;color:var(--txt-dim)}
+  .tb-btn{padding:7px 9px;border-radius:9px;color:var(--txt-dim);flex:0 0 auto}
   .tb-btn:hover{background:var(--panel-2)}
 
   #banner{display:none;margin:10px 14px 0;background:#3a1e1e;border:1px solid #582a2a;color:#ffc9c9;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.5}
@@ -193,9 +196,12 @@
   #promptText{resize:vertical;min-height:120px;line-height:1.5}
 
   .composer-wrap{flex:0 0 auto;padding:6px 16px 14px}
-  .composer{max-width:var(--content-max-width);margin:0 auto;background:var(--composer);border:1px solid var(--border);border-radius:26px;padding:8px 8px 8px 16px;display:flex;align-items:flex-end;gap:8px;transition:max-width .25s cubic-bezier(0.4, 0, 0.2, 1)}
+  .composer{max-width:var(--content-max-width);margin:0 auto;background:var(--composer);border:1px solid var(--border);border-radius:20px;padding:12px 14px 10px;display:flex;flex-direction:column;gap:8px;transition:max-width .25s cubic-bezier(0.4, 0, 0.2, 1)}
   .composer:focus-within{border-color:var(--muted)}
-  #input{background:transparent;border:none;resize:none;padding:8px 0;max-height:220px;min-height:24px;line-height:1.5;font-size:15px}
+  #input{background:transparent;border:none;resize:none;padding:2px 0;max-height:220px;min-height:28px;line-height:1.5;font-size:15px;width:100%}
+  .composer-foot{display:flex;align-items:center;justify-content:space-between;width:100%;padding-top:2px}
+  .composer-left{display:flex;align-items:center;gap:8px}
+  .composer-right{display:flex;align-items:center;gap:10px}
   .send-btn{width:36px;height:36px;flex:0 0 auto;border-radius:50%;background:var(--accent);color:var(--accent-txt);display:grid;place-items:center}
   .send-btn:disabled{opacity:.3;cursor:not-allowed}
   .send-btn.stop{background:var(--danger);color:#fff;opacity:1;cursor:pointer}
@@ -324,8 +330,6 @@
     <button class="loadbtn" id="loadBtn"></button>
     <span class="capinfo" id="capinfo"></span>
     <span class="grow"></span>
-    <span class="ctxring" id="ctxRing" style="display:none"><svg width="34" height="34" viewBox="0 0 34 34"><circle class="track" cx="17" cy="17" r="13.75" fill="none" stroke-width="4.5"/><circle class="prog" cx="17" cy="17" r="13.75" fill="none" stroke-width="4.5" stroke-linecap="round" transform="rotate(-90 17 17)"/></svg></span>
-    <button class="think-toggle" id="thinkBtn" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.9 1 1 1.7l.1.5h5l.1-.5c.1-.7.5-1.3 1-1.7A6 6 0 0 0 12 3z"/></svg></button>
     <button class="tb-btn" id="ctxBtn" data-tip="Show context (view and edit this branch's messages)" title="Context"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></button>
 
     <button class="tb-btn" id="themeBtn" title="Toggle theme"><svg id="themeIcon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg></button>
@@ -341,7 +345,15 @@
     <div id="composeBar" style="display:none"><span>Reverted. Type and send to branch from here.</span><button id="composeCancel">Cancel</button></div>
     <div class="composer">
       <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
-      <button class="send-btn" id="send" data-tip="Send" disabled><svg id="sendIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      <div class="composer-foot">
+        <div class="composer-left">
+          <button class="think-toggle" id="thinkBtn" style="display:none" title="Thinking mode"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.9 1 1 1.7l.1.5h5l.1-.5c.1-.7.5-1.3 1-1.7A6 6 0 0 0 12 3z"/></svg></button>
+        </div>
+        <div class="composer-right">
+          <span class="ctxring" id="ctxRing" style="display:none"><svg width="34" height="34" viewBox="0 0 34 34"><circle class="track" cx="17" cy="17" r="13.75" fill="none" stroke-width="4.5"/><circle class="prog" cx="17" cy="17" r="13.75" fill="none" stroke-width="4.5" stroke-linecap="round" transform="rotate(-90 17 17)"/></svg></span>
+          <button class="send-btn" id="send" data-tip="Send" disabled><svg id="sendIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        </div>
+      </div>
     </div>
     <div class="foot-note" id="tipDisplay"></div>
   </div>
@@ -538,31 +550,90 @@ function save(){
 /* ============ conversations (tree of message nodes) ============ */
 let _ord=Date.now(); const nextOrd=()=>_ord++;
 let compose=null;   // {parentId} while a reverted-into branch is being composed (not yet sent)
-const CHAT_TITLE_RE = /^(\d{2}\/\d{2}\/\d{4}) - Chat (\d+)$/;
-function dateStamp(d){
-  const p=n=>String(n).padStart(2,"0");
-  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`;
+function sameDay(ts1, ts2){
+  const d1 = new Date(ts1), d2 = new Date(ts2);
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
 }
-// "25/07/2026 - Chat 3". Numbering restarts each day and takes the highest number already
-// used that day, so deleting or renaming a chat can never produce a duplicate title.
+
 function nextChatTitle(){
-  const stamp=dateStamp(new Date());
-  let max=0;
+  const now = Date.now();
+  let max = 0;
   for(const c of Object.values(state.conversations)){
-    const m=CHAT_TITLE_RE.exec(c.title||"");
-    if(m && m[1]===stamp) max=Math.max(max, parseInt(m[2],10));
+    const ts = c.createdAt || c.seq || c.updatedAt || now;
+    if(sameDay(ts, now)){
+      const m = /(?:^|\s)Chat\s+(\d+)$/i.exec(c.title || "");
+      if(m) max = Math.max(max, parseInt(m[1], 10));
+    }
   }
-  return `${stamp} - Chat ${max+1}`;
+  return `Chat ${max + 1}`;
 }
+
+function formatConvTime(c){
+  const ts = c.createdAt || c.seq || c.updatedAt || Date.now();
+  const d = new Date(ts);
+  const now = new Date();
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const timeStr = `${hours}:${minutes} ${ampm}`;
+
+  const isSameDay = (d1, d2) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+
+  if (isSameDay(d, now)) return `Today • ${timeStr}`;
+  if (isSameDay(d, yesterday)) return `Yesterday • ${timeStr}`;
+
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const monthStr = months[d.getMonth()];
+  const dayNum = d.getDate();
+
+  if (d.getFullYear() === now.getFullYear()) return `${dayNum} ${monthStr} • ${timeStr}`;
+  return `${dayNum} ${monthStr} ${d.getFullYear()} • ${timeStr}`;
+}
+
+let currentCalendarDay = new Date().getDate();
+function checkDayChange(){
+  const day = new Date().getDate();
+  if(day !== currentCalendarDay){
+    currentCalendarDay = day;
+    renderSidebar();
+  }
+}
+function scheduleMidnightRefresh(){
+  const now = new Date();
+  currentCalendarDay = now.getDate();
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 50);
+  const msToMidnight = Math.max(1000, nextMidnight.getTime() - now.getTime());
+  setTimeout(() => {
+    renderSidebar();
+    scheduleMidnightRefresh();
+  }, msToMidnight);
+}
+
 function newConversation(){
   const id=uid();
-  // New chats follow the picker, so switching model once carries through the chats you open
-  // after it. The default model is what a fresh open starts on, not a floor every new chat
-  // is dragged back to.
   state.conversations[id]={id, title:nextChatTitle(), model:state.settings.model||pickDefaultModel(), nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
   state.currentId=id; compose=null; save(); return state.conversations[id];
 }
 function migrateConv(c){            // old flat .messages → node chain
+  if(!c.createdAt) c.createdAt = c.seq || c.updatedAt || Date.now();
+  if(c.title){
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(Chat \d+)$/i.exec(c.title);
+    if(m){
+      c.title = m[4];
+      const parsedTs = new Date(parseInt(m[3],10), parseInt(m[2],10)-1, parseInt(m[1],10), 12, 0, 0).getTime();
+      if(!c.createdAt || c.createdAt > parsedTs + 86400000) c.createdAt = parsedTs;
+    }
+  }
   if(c.nodes) return c;
   const nodes={}; let prev=null;
   for(const m of (c.messages||[])){ const id=uid(); nodes[id]={id,parentId:prev,role:m.role,content:m.content,thinking:m.thinking||"",meta:m.meta||"",ord:nextOrd()}; prev=id; }
@@ -683,13 +754,15 @@ function updateCap(){
   const m=modelCache.find(x=>x.name===els.model.value);
   if(m&&m.details){
     const ctx=fmtCtx(effectiveNumCtx(els.model.value));
-    els.capinfo.textContent=[
+    const txt=[
       m.details.parameter_size,
       m.details.quantization_level,
       ctx && ctx+" context",
       (m.capabilities||[]).join(" "),
     ].filter(Boolean).join(" · ");
-  }else els.capinfo.textContent="";
+    els.capinfo.textContent=txt;
+    els.capinfo.setAttribute("title",txt);
+  }else{ els.capinfo.textContent=""; els.capinfo.removeAttribute("title"); }
   updateThinkToggle();
 }
 function updateThinkToggle(){
@@ -836,7 +909,7 @@ async function loadModel(name){
     }finally{
       loadingName=null; loadAbort=null;
       if(loadPromise===p) loadPromise=null;   // never clear a newer load's handle
-      await refreshPs(); els.input.focus();
+      await refreshPs(); safeFocusInput();
       // A load is one of the things that holds the queue, so finishing one has to release it.
       // Messages typed while you waited on a manual Load would otherwise sit there for good,
       // because nothing else was going to look at the queue again.
@@ -881,6 +954,11 @@ async function ejectModel(name){
 }
 
 /* ============ chat gating ============ */
+function safeFocusInput(){
+  const a=document.activeElement;
+  if(a && (a.isContentEditable || ["INPUT","TEXTAREA","SELECT"].includes(a.tagName))) return;
+  els.input.focus();
+}
 function isLoaded(){ return loadedModels.has(els.model.value); }
 // Residency no longer gates the composer: sending loads the model if it isn't already.
 // The only thing that can still block typing is having no models installed at all.
@@ -909,8 +987,10 @@ function renderEmpty(){
 function renderSidebar(){
   els.convList.innerHTML="";
   for(const c of sortedConvs()){
+    const timeText = formatConvTime(c);
+    const fullTooltip = `${c.title}\n${timeText}`;
     const el=document.createElement("div"); el.className="conv"+(c.id===state.currentId?" active":"");
-    el.innerHTML=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span class="title" title="${escAttr(c.title)}">${esc(c.title)}</span><span class="menu"><button data-act="rename" title="Rename"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button data-act="delete" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></span>`;
+    el.innerHTML=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="conv-body"><span class="title" title="${escAttr(fullTooltip)}">${esc(c.title)}</span><span class="meta">${esc(timeText)}</span></div><span class="menu"><button data-act="rename" title="Rename"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button data-act="delete" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></span>`;
     el.addEventListener("click",ev=>{
       const act=ev.target.closest("[data-act]");
       if(act){ ev.stopPropagation(); act.dataset.act==="delete"?deleteConv(c.id):renameConv(c.id,el); return; }
@@ -922,7 +1002,11 @@ function renderSidebar(){
 function renameConv(id,el){
   const t=el.querySelector(".title"); t.setAttribute("contenteditable","true"); t.focus();
   const r=document.createRange(); r.selectNodeContents(t); const s=getSelection(); s.removeAllRanges(); s.addRange(r);
-  const onInput=()=>{ t.setAttribute("title", t.textContent.trim()||"Untitled"); };
+  const c = state.conversations[id];
+  const onInput=()=>{
+    const full = `${t.textContent.trim()||"Untitled"}\n${formatConvTime(c)}`;
+    t.setAttribute("title", full);
+  };
   t.addEventListener("input", onInput);
   const fin=()=>{
     t.removeEventListener("input", onInput);
@@ -1290,7 +1374,7 @@ async function generate(c){
       status="error";
       commit(); live.dom.content.innerHTML=md(assistant.content)+`<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(err.message)}</p>`;
     }else{ status="error"; live.dom.content.innerHTML=`<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
-  }finally{ live=null; controller=null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); els.input.focus(); }
+  }finally{ live=null; controller=null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); safeFocusInput(); }
   // A stop the user asked for winds the prompt back into the composer. An abort from losing
   // the tab lock does not: that tab is parking, and there is nobody to hand it back to.
   if(status==="aborted" && stopByUser){ stopByUser=false; rewindAfterStop(c,parentId); }
@@ -1481,7 +1565,7 @@ async function awaitLoad(c){
   let ok=false;
   try{ ok=await ensureLoaded(c.model); }
   finally{ sending=false; setSendLoading(false); }
-  if(!ok) els.input.focus();
+  if(!ok) safeFocusInput();
   return ok;
 }
 function revertTo(nodeId){
@@ -2297,8 +2381,14 @@ async function boot(){
   await reassertKeepAlive();     // cancels a grace window left behind by a refresh
   const justEnabled=await firstRunPrompt();
   if(fresh || justEnabled) await autoLoadOnOpen();   // saying yes should load now, not next time
-  setInterval(()=>{ if(owns && !document.hidden && !loadingName && !ejectingName) refreshPs(); }, 5000);
-  els.input.focus();
+  setInterval(()=>{
+    checkDayChange();
+    if(owns && !document.hidden && !loadingName && !ejectingName) refreshPs();
+  }, 5000);
+  scheduleMidnightRefresh();
+  window.addEventListener("focus", checkDayChange);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) checkDayChange(); });
+  safeFocusInput();
 }
 applyTheme(state.settings.theme);
 const _owner=readOwner();
