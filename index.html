@@ -81,15 +81,15 @@
   .think-toggle:hover{background:var(--panel-2);color:var(--txt)}
   .think-toggle.on{color:#fff;background:var(--primary);border-color:var(--primary)}
   .think-toggle.on:hover{color:#fff}
-  .ctxring{display:inline-grid;place-items:center;flex:0 0 auto}
+  .ctxring{display:inline-grid;place-items:center;flex:0 0 auto;transform:translateZ(0);will-change:transform,opacity}
   .ctxring .track{stroke:var(--border)}
-  .ctxring .prog{stroke:var(--primary);transition:stroke-dashoffset .3s,stroke .3s,opacity .2s}
+  .ctxring .prog{stroke:var(--primary);transition:stroke-dashoffset .3s,stroke .3s,opacity .2s;will-change:stroke-dashoffset,stroke,opacity}
   /* Provisional: the arc's own stroke-dasharray is what draws it, so the "unmeasured" hint
      goes on the track and the arc's opacity instead of dashing the arc itself. */
   .ctxring.approx .prog{opacity:.45}
   .ctxring.approx .track{stroke-dasharray:3 3}
   @keyframes ringPulse{0%,100%{opacity:1}50%{opacity:.35}}
-  .ctxring.generating .prog{animation:ringPulse 1.6s ease-in-out infinite}
+  .ctxring.generating .prog{animation:ringPulse 1.6s ease-in-out infinite;will-change:opacity}
   .loadchip{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
   .loadbtn{padding:6px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;white-space:nowrap}
   .loadbtn:hover{background:var(--panel-2)}
@@ -104,8 +104,8 @@
   html[data-theme="light"] #banner{background:#fff0f0;border-color:#ffd0d0;color:#a33}
   #banner code{background:#00000030;padding:1px 5px;border-radius:5px;font-family:var(--mono)}
 
-  #scroll{flex:1;overflow-y:auto}
-  .thread{max-width:var(--content-max-width);margin:0 auto;padding:24px 24px 8px;width:100%;transition:max-width .25s cubic-bezier(0.4, 0, 0.2, 1)}
+  #scroll{flex:1;overflow-y:auto;contain:content}
+  .thread{max-width:var(--content-max-width);margin:0 auto;padding:24px 24px 8px;width:100%;transition:max-width .25s cubic-bezier(0.4, 0, 0.2, 1);contain:content}
   .empty{text-align:center;color:var(--txt-dim);margin-top:20vh;font-size:22px;font-weight:500}
   .empty .sub{font-size:14px;color:var(--muted);font-weight:400;margin-top:8px}
 
@@ -266,7 +266,7 @@
   .seg button.on{background:var(--panel-2);color:var(--txt);font-weight:600}
   .help{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:11px;font-weight:700;line-height:1;cursor:help;margin-left:6px;vertical-align:middle;user-select:none}
   .help:hover{border-color:var(--primary);color:var(--primary)}
-  #tip{position:fixed;z-index:100;max-width:250px;white-space:pre-line;background:var(--panel);color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.5;font-weight:400;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .12s;left:0;top:0}
+  #tip{position:fixed;z-index:100;max-width:250px;white-space:pre-line;background:var(--panel);color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.5;font-weight:400;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .12s;left:0;top:0;transform:translate3d(0,0,0);will-change:transform,opacity}
   .modal-actions{flex-wrap:wrap}
   #tip.show{opacity:1}
   .modal{position:fixed;inset:0;background:var(--overlay);display:none;align-items:center;justify-content:center;z-index:80}
@@ -1099,11 +1099,34 @@ function openConversation(){
 let autostick=true, lastTop=1e9;   // follow the stream only while the user is parked at the bottom
 function scrollBottom(){ els.scroll.scrollTop=els.scroll.scrollHeight; }
 function nearBottom(){ return els.scroll.scrollHeight-els.scroll.scrollTop-els.scroll.clientHeight<80; }
+
+let isUserScrolling = false;
+let scrollSilenceTimer = null;
+let scrollRaf = null;
+
+function handleScroll(){
+  const t=els.scroll.scrollTop, dist=els.scroll.scrollHeight-t-els.scroll.clientHeight;
+  if(dist<4) autostick=true;
+  else if(t<lastTop-1) autostick=false;
+  lastTop=t;
+}
+
 // wheel/touch fire synchronously on user intent. Disable follow the instant they scroll up.
 els.scroll.addEventListener("wheel",e=>{ if(e.deltaY<0) autostick=false; },{passive:true});
 els.scroll.addEventListener("touchmove",()=>{ if(els.scroll.scrollHeight-els.scroll.scrollTop-els.scroll.clientHeight>=4) autostick=false; },{passive:true});
-// covers scrollbar drag / keys: any upward move detaches; re-attach ONLY at the true bottom (not merely "near").
-els.scroll.addEventListener("scroll",()=>{ const t=els.scroll.scrollTop, dist=els.scroll.scrollHeight-t-els.scroll.clientHeight; if(dist<4) autostick=true; else if(t<lastTop-1) autostick=false; lastTop=t; });
+// passive and RAF throttled scroll handler for 120Hz compositor scrolling
+els.scroll.addEventListener("scroll",()=>{
+  isUserScrolling = true;
+  if(scrollSilenceTimer) clearTimeout(scrollSilenceTimer);
+  scrollSilenceTimer = setTimeout(()=>{ isUserScrolling = false; }, 150);
+
+  if(!scrollRaf){
+    scrollRaf = requestAnimationFrame(()=>{
+      scrollRaf = null;
+      handleScroll();
+    });
+  }
+},{passive:true});
 
 /* ============ setting scope & resolution ============
    Reads always prefer a per-model override when one exists; `scope` decides only where
@@ -2184,17 +2207,55 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ const m=$("#confi
 document.addEventListener("visibilitychange",()=>{ if(owns && !document.hidden) refreshPs(); });
 $("#confirm").addEventListener("click",e=>{ const m=$("#confirm"); if(e.target===m && m._cancel) m._cancel(); });  // backdrop = cancel
 
-// help tooltip (fixed-positioned so the settings drawer never clips it)
+// help tooltip (fixed-positioned so the settings drawer never clips it, zero-thrash transform positioning)
 const tip=$("#tip");
-function showTip(h){
-  tip.textContent=h.dataset.tip||""; tip.classList.add("show");
-  const r=h.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
-  let left=Math.min(r.left, innerWidth-8-tw), top=r.bottom+6;
-  if(top+th>innerHeight-8) top=r.top-6-th;
-  tip.style.left=Math.max(8,left)+"px"; tip.style.top=Math.max(8,top)+"px";
+let activeTipEl = null;
+let tipRaf = null;
+
+function hideTip(){
+  activeTipEl = null;
+  if(tipRaf){ cancelAnimationFrame(tipRaf); tipRaf = null; }
+  tip.style.opacity = "0";
 }
-document.addEventListener("mouseover",e=>{ const h=e.target.closest("[data-tip]"); if(h) showTip(h); });
-document.addEventListener("mouseout",e=>{ if(e.target.closest("[data-tip]")) tip.classList.remove("show"); });
+
+function showTip(h){
+  if(activeTipEl === h) return;
+  activeTipEl = h;
+  if(tipRaf) cancelAnimationFrame(tipRaf);
+  
+  tipRaf = requestAnimationFrame(()=>{
+    tipRaf = null;
+    if(activeTipEl !== h) return;
+    const text = h.dataset.tip || "";
+    if(!text){ hideTip(); return; }
+    
+    tip.textContent = text;
+    
+    requestAnimationFrame(()=>{
+      if(activeTipEl !== h) return;
+      const r = h.getBoundingClientRect();
+      const tw = tip.offsetWidth;
+      const th = tip.offsetHeight;
+      let left = Math.min(r.left, innerWidth - 8 - tw);
+      let top = r.bottom + 6;
+      if(top + th > innerHeight - 8) top = r.top - 6 - th;
+      left = Math.max(8, left);
+      top = Math.max(8, top);
+      tip.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+      tip.style.opacity = "1";
+    });
+  });
+}
+
+document.addEventListener("mouseover", e => {
+  const h = e.target.closest("[data-tip]");
+  if(h) showTip(h);
+}, { passive: true });
+
+document.addEventListener("mouseout", e => {
+  const h = e.target.closest("[data-tip]");
+  if(!h || !h.contains(e.relatedTarget)) hideTip();
+}, { passive: true });
 
 /* ============ single-tab ownership ============
    Two tabs would fight over which model is resident, so exactly one owns the app at a time.
@@ -2383,7 +2444,7 @@ async function boot(){
   if(fresh || justEnabled) await autoLoadOnOpen();   // saying yes should load now, not next time
   setInterval(()=>{
     checkDayChange();
-    if(owns && !document.hidden && !loadingName && !ejectingName) refreshPs();
+    if(owns && !document.hidden && !loadingName && !ejectingName && !isUserScrolling) refreshPs();
   }, 5000);
   scheduleMidnightRefresh();
   window.addEventListener("focus", checkDayChange);
