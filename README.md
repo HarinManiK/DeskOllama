@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="dist/DeskOllama-logo-nobg.png" alt="DeskOllama Logo" width="90" />
+  <img src="src/DeskOllama-logo-nobg.png" alt="DeskOllama Logo" width="90" />
   <h1>DeskOllama</h1>
   <p><strong>A beautiful, lightweight desktop chat interface for <a href="https://ollama.com">Ollama</a></strong></p>
 
