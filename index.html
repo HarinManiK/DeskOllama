@@ -736,8 +736,8 @@ function updateCtxRing(){
   const pct=frac*100, left=Math.max(0,limit-used);
   const lines=[
     `Context window: ${limit.toLocaleString()} tokens`,
-    `Used: ${pct.toFixed(1)}% (${tokens(used)})`,
-    `Left: ${(100-pct).toFixed(1)}% (${tokens(left)})`,
+    `Used: ${pct.toFixed(2)}% (${tokens(used)})`,
+    `Left: ${(100-pct).toFixed(2)}% (${tokens(left)})`,
   ];
   if(!exact) lines.push(`At least this much. Exact after the next reply.`);
   if(frac>=0.9) lines.push(`Nearly full. Ollama starts dropping the oldest messages silently.`);
