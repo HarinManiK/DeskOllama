@@ -829,10 +829,28 @@ function scheduleMidnightRefresh(){
   }, msToMidnight);
 }
 
+function cancelCompose(){
+  if(!compose) return;
+  const c=currentConv();
+  if(c && compose.restoreLeaf && c.nodes && c.nodes[compose.restoreLeaf]){
+    setLeaf(c, compose.restoreLeaf);
+  }
+  compose=null;
+}
+
+function clearInput(){
+  if(els && els.input){
+    els.input.value="";
+    els.input.style.height="auto";
+    syncSendButton();
+  }
+}
+
 function newConversation(){
+  cancelCompose();
   const id=uid();
   state.conversations[id]={id, title:nextChatTitle(), model:state.settings.model||pickDefaultModel(), nodes:{}, leafId:null, ctxUsed:0, seq:nextOrd(), createdAt:Date.now(), updatedAt:Date.now()};
-  state.currentId=id; compose=null; save(); return state.conversations[id];
+  state.currentId=id; clearInput(); save(); return state.conversations[id];
 }
 function migrateConv(c){            // old flat .messages → node chain
   if(!c.createdAt) c.createdAt = c.seq || c.updatedAt || Date.now();
@@ -1214,17 +1232,35 @@ let loadPromise=null, loadAbort=null;
 async function loadModel(name){
   if(!name) return false;
   if(loadingName===name && loadPromise) return loadPromise;   // already on it
-  if(loadingName) return false;                               // a different model is loading
+  if(loadingName && loadingName!==name){
+    cancelLoad();
+    if(loadPromise){ try{ await loadPromise; }catch(e){} }
+  }
   const p=(async()=>{
     cancelMeasure();   // the model is about to change under any reading in flight
     if(state.settings.oneAtOnce) await evictOthers(name);
     loadingName=name; loadAbort=new AbortController(); updateLoadUI(); renderEmpty();
+    let loadedOk = false;
     try{
       const r=await fetch(base()+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(loadBody(name)),signal:loadAbort.signal});
       if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text()).slice(0,180));
       await r.json();
-      els.banner.style.display="none";
-      return true;
+
+      if(loadAbort && loadAbort.signal.aborted){
+        loadedOk = false;
+      } else if(state.settings.oneAtOnce && els.model.value !== name){
+        // Model changed while this load was in-flight; immediately eject it
+        fetch(base()+"/api/generate",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({model:name, keep_alive:0, stream:false})
+        }).catch(()=>{});
+        loadedOk = false;
+      } else {
+        els.banner.style.display="none";
+        loadedOk = true;
+      }
+      return loadedOk;
     }catch(e){
       if(e.name!=="AbortError"){
         els.banner.style.display="block";
@@ -1232,23 +1268,32 @@ async function loadModel(name){
       }
       return false;
     }finally{
-      loadingName=null; loadAbort=null;
+      if(loadingName===name) loadingName=null;
+      if(loadAbort && loadAbort.signal.aborted) loadAbort=null;
       if(loadPromise===p) loadPromise=null;   // never clear a newer load's handle
       await refreshPs(); safeFocusInput();
-      // A load is one of the things that holds the queue, so finishing one has to release it.
-      // Messages typed while you waited on a manual Load would otherwise sit there for good,
-      // because nothing else was going to look at the queue again.
       drainQueue();
     }
   })();
   loadPromise=p; return p;
 }
 function cancelLoad(){
-  if(!loadAbort) return;
-  loadAbort.abort();
-  // Cancelling is a stop, so whatever is waiting behind it waits too. Without this the
-  // finally below would release the queue and immediately start the load you just cancelled.
+  if(!loadAbort && !loadingName) return;
+  const cancelledName = loadingName;
+  if(loadAbort){
+    try{ loadAbort.abort(); }catch(e){}
+  }
+  loadingName = null;
+  loadAbort = null;
   halt("Paused: loading was cancelled.");
+  if(cancelledName){
+    // Immediately tell Ollama to evict/unload cancelled model from RAM/VRAM
+    fetch(base()+"/api/generate",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:cancelledName, keep_alive:0, stream:false})
+    }).catch(()=>{});
+  }
 }
 // Resolves true once `name` is resident. A load already in flight is awaited rather than
 // refused, so sending while boot auto-load is still running waits for it instead of
@@ -1256,6 +1301,10 @@ function cancelLoad(){
 async function ensureLoaded(name){
   if(!name) return false;
   if(loadingName===name && loadPromise) return loadPromise;
+  if(loadingName && loadingName!==name){
+    cancelLoad();
+    if(loadPromise){ try{ await loadPromise; }catch(e){} }
+  }
   if(loadedModels.has(name)){
     if(state.settings.oneAtOnce) await evictOthers(name);
     return loadedModels.has(name);
@@ -1263,7 +1312,7 @@ async function ensureLoaded(name){
   return loadModel(name);
 }
 async function ejectModel(name){
-  if(!name || ejectingName || loadingName) return;
+  if(!name || ejectingName) return;
   ejectingName=name; updateLoadUI();
   try{
     await fetch(base()+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:name, keep_alive:0, stream:false})});
@@ -1319,7 +1368,7 @@ function renderSidebar(){
     el.addEventListener("click",ev=>{
       const act=ev.target.closest("[data-act]");
       if(act){ ev.stopPropagation(); act.dataset.act==="delete"?deleteConv(c.id):renameConv(c.id,el); return; }
-      if(c.id!==state.currentId){ state.currentId=c.id; compose=null; save(); openConversation(); }
+      if(c.id!==state.currentId){ cancelCompose(); state.currentId=c.id; clearInput(); save(); openConversation(); }
     });
     els.convList.appendChild(el);
   }
@@ -2526,6 +2575,7 @@ els.send.addEventListener("click",()=>{ isStopMode() ? requestStop() : submit();
 // Leaves any in-flight reply running, same as switching to an existing chat.
 els.newChat.addEventListener("click",()=>{ newConversation(); openConversation(); els.input.focus(); });
 els.model.addEventListener("change",()=>{
+  if(loadingName && loadingName!==els.model.value) cancelLoad();
   const c=currentConv(); c.model=els.model.value; state.settings.model=els.model.value; save();
   updateCap(); updateLoadUI(); updateCtxRing();
   // A model the registry already knows resolves without a request; only one it has never seen
@@ -2538,7 +2588,7 @@ els.model.addEventListener("change",()=>{
 els.loadBtn.addEventListener("click",()=>{ const n=els.model.value; if(loadingName||ejectingName) return; isLoaded()?ejectModel(n):loadModel(n); });
 $("#thinkBtn").addEventListener("click",()=>{ state.settings.think=!state.settings.think; save(); updateThinkToggle(); });
 // Also the way to let a frozen queue go: dropping the rewound prompt resumes the drain.
-$("#composeCancel").addEventListener("click",()=>{ if(!compose) return; const c=currentConv(); const r=compose.restoreLeaf; compose=null; if(r) setLeaf(c,r); save(); els.input.value=""; els.input.dispatchEvent(new Event("input")); openConversation(); drainQueue(); });
+$("#composeCancel").addEventListener("click",()=>{ if(!compose) return; cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); });
 els.collapseBtn.addEventListener("click",()=>{ els.sidebar.classList.add("collapsed"); els.showSidebar.style.display=""; });
 els.showSidebar.addEventListener("click",()=>{ els.sidebar.classList.remove("collapsed"); els.showSidebar.style.display="none"; });
 $("#s_system").addEventListener("input",e=>{ autosizeTa(e.target); renderPromptChips(); });
