@@ -485,6 +485,7 @@
         <div class="field"><label>Keep loaded (seconds)<span class="help" data-tip="Time after which the model automatically unloads from memory after being idle&#10;-1 = forever&#10;0 = unload after each response&#10;blank = Ollama's default">?</span></label><input type="number" step="1" id="s_keepalive" placeholder="300"></div>
         <div class="field"><label>Response format<span class="help" data-tip="Force replies to be valid JSON, or leave as plain text.">?</span></label><select id="s_format"><option value="">Text</option><option value="json">JSON</option></select></div>
       </div>
+      <div class="field switch"><label>Force thinking toggle<span class="help" data-tip="Show the thinking button even when Ollama reports no thinking support.&#10;Only needed for a GGUF with no chat template, which Ollama cannot inspect.&#10;If the model really can't think, this switches itself back off on the first send.">?</span></label><input type="checkbox" id="s_forcethinking"></div>
     </div>
     <div id="paramFields"></div>
     <div class="set-group">
@@ -677,6 +678,10 @@ const EXTRA_SETTINGS = [
   {k:"system",    label:"System prompt"},
   {k:"keepAlive", label:"Keep loaded (seconds)"},
   {k:"format",    label:"Response format"},
+  // Escape hatch for a GGUF that Ollama cannot introspect at all (no embedded chat template),
+  // where /api/show has nothing to read and so reports no thinking capability. Per-model by
+  // default, and it clears itself if the model turns out to reject `think`.
+  {k:"forceThinking", label:"Force thinking toggle", type:"bool"},
 ];
 const EXTRA_BY_KEY = Object.fromEntries(EXTRA_SETTINGS.map(it=>[it.k,it]));
 // Keys that can never be per-model.
@@ -701,7 +706,8 @@ const RETIRED_DEFAULT_SYSTEM = 'Never output the em dash character ("—"). Repl
 const DEFAULT_SETTINGS = { baseUrl:"http://localhost:11434", theme:"dark", think:true, system:"", keepAlive:"-1", format:"", model:"", scope:{}, modelParams:{}, prompts:[],
   // Residency. autoLoadPrompted is bookkeeping for the first-run offer, not a reviewable
   // setting, so it is deliberately absent from EXTRA_SETTINGS.
-  autoLoad:false, defaultModel:"", oneAtOnce:true, unloadOnClose:true, autoLoadPrompted:false };
+  autoLoad:false, defaultModel:"", oneAtOnce:true, unloadOnClose:true, autoLoadPrompted:false,
+  forceThinking:false };
 function durToSeconds(s){ const m=/^(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)?$/.exec(String(s).trim()); if(!m) return null; const mult={ns:1e-9,us:1e-6,"µs":1e-6,ms:1e-3,s:1,m:60,h:3600}[m[2]||"s"]; return Math.round(parseFloat(m[1])*mult); }
 
 /* ---- per-tab session ----
@@ -724,6 +730,9 @@ function load(){
       v3.settings.scope = {...(v3.settings.scope||{})};
       v3.settings.modelParams = {...(v3.settings.modelParams||{})};
       v3.settings.prompts = Array.isArray(v3.settings.prompts) ? [...v3.settings.prompts] : [];
+      // What /api/show told us about each installed model, keyed by name. Derived cache rather
+      // than settings, so it sits beside conversations and survives a factory reset.
+      v3.modelMeta = (v3.modelMeta && typeof v3.modelMeta==="object") ? v3.modelMeta : {};
       // autoLoadModel was renamed to defaultModel, which is what it always meant.
       if(!v3.settings.defaultModel && v3.settings.autoLoadModel) v3.settings.defaultModel=v3.settings.autoLoadModel;
       delete v3.settings.autoLoadModel;
@@ -739,7 +748,7 @@ function load(){
   }catch{}
   let conversations={};
   try{ const v2=JSON.parse(localStorage.getItem("localharness.v2")); if(v2 && v2.conversations){ conversations=v2.conversations; } }catch{}
-  return { settings:{...DEFAULT_SETTINGS, params:defaultParams(), scope:{}, modelParams:{}}, conversations, currentId:sessionGet("currentId") };
+  return { settings:{...DEFAULT_SETTINGS, params:defaultParams(), scope:{}, modelParams:{}}, conversations, modelMeta:{}, currentId:sessionGet("currentId") };
 }
 const state = load();
 // currentId is split out of the persisted blob: it belongs to this tab, not to the profile.
@@ -924,12 +933,125 @@ function parseKeepAlive(raw){
   return {ok:false};
 }
 function modelCaps(name){ const m=modelCache.find(x=>x.name===name); return (m&&m.capabilities)||[]; }
+// What the model can do, plus the manual override for one it cannot be asked about.
+function canThink(name){ return modelCaps(name).includes("thinking") || !!resolveSetting("forceThinking",name); }
+// The forced toggle turned out to be wrong. Writes a per-model false rather than clearing the
+// key, so a global "on" is shadowed for this model alone and every other model keeps its own.
+function clearForceThinking(model){
+  if(!model) return;
+  setOverride(model,"forceThinking",false);
+  save(); updateThinkToggle();
+  if(els.settings.classList.contains("open")) fillSettingsForm();
+}
+
+/* ============ model capability registry ============
+   /api/tags answers from a summary cached in the manifest, and for a model created locally from
+   a GGUF blob that summary can come out degraded: one such model reports capabilities of just
+   ["completion"] and a quantization of "unknown" there, while /api/show reads the GGUF itself
+   and correctly reports thinking and tools. /api/show is what the Ollama CLI consults to decide
+   `/set think` is allowed, so it is the authority here too.
+
+   Every model fact the app displays or acts on goes through this, not only the thinking flag:
+   capabilities, quantization, parameter size and the context window all come off the same
+   stale blob, so correcting one of them and leaving the rest would just move the bug.
+
+   A call costs a flat ~2s whatever the model's size, so the answer is stored rather than asked
+   for twice. Entries are keyed on the digest /api/tags already hands us, which changes whenever
+   a model is re-pulled or rebuilt, so the registry maintains itself: a known model costs
+   nothing and is right at first paint, a new or rebuilt one costs a single call, and an
+   uninstalled one is dropped. */
+const metaAll = () => (state.modelMeta && typeof state.modelMeta==="object") ? state.modelMeta : (state.modelMeta={});
+let showInFlight=new Map();   // name -> Promise, so a sweep and a model switch never both ask
+const SHOW_CONCURRENCY=6;     // /api/show parallelises fully: six at once costs the wall time of one
+// The context window lives in model_info under the architecture's own namespace ("qwen3.context_length"),
+// never in details. Prefer the family we were told, then any key with the right suffix.
+function ctxFromModelInfo(info,family){
+  if(!info) return 0;
+  const num=k=>{ const n=Number(info[k]); return Number.isFinite(n)&&n>0 ? n : 0; };
+  if(family){ const n=num(family+".context_length"); if(n) return n; }
+  for(const k of Object.keys(info)) if(k.endsWith(".context_length")){ const n=num(k); if(n) return n; }
+  return 0;
+}
+// Everything worth keeping from one /api/show, tied to the exact blob it describes.
+function metaFromShow(d,digest){
+  return { digest,
+    capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
+    details: (d && d.details) || {},
+    ctx: ctxFromModelInfo(d && d.model_info, ((d&&d.details)||{}).family) };
+}
+// Folds a stored entry onto the live /api/tags entry, in place, so every existing reader
+// (modelCaps, updateCap, modelMaxCtxFor, effectiveNumCtx) picks it up untouched. Returns true
+// when the context window moved, since saved per-model limits are derived from that.
+function applyMeta(name,meta){
+  const e=modelCache.find(x=>x.name===name);
+  if(!e || !meta) return false;
+  const before = e.details && e.details.context_length;
+  if(Array.isArray(meta.capabilities) && meta.capabilities.length) e.capabilities=meta.capabilities.slice();
+  // /api/show's details carry no context_length, so spreading them cannot clobber the one
+  // /api/tags gave us; the measured value below is applied on top when we have it.
+  if(meta.details) e.details={...e.details, ...meta.details};
+  if(Number.isFinite(Number(meta.ctx)) && Number(meta.ctx)>0) e.details={...e.details, context_length:Number(meta.ctx)};
+  return (e.details && e.details.context_length)!==before;
+}
+async function enrichModel(name){
+  const entry=modelCache.find(x=>x.name===name); if(!entry) return null;
+  const store=metaAll();
+  const known=has(store,name) ? store[name] : null;
+  if(known && known.digest===entry.digest){ applyMeta(name,known); return known; }   // no request
+  if(showInFlight.has(name)) return showInFlight.get(name);
+  const p=(async()=>{
+    try{
+      const r=await fetch(base()+"/api/show",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:name})});
+      if(!r.ok) return null;                                  // silent: the /api/tags data stands
+      const meta=metaFromShow(await r.json(), entry.digest);
+      store[name]=meta; save();
+      if(applyMeta(name,meta)) reconcileModelLimits();         // a corrected window feeds num_ctx
+      return meta;
+    }catch{ return null; }                                    // offline or mid-pull: today's behaviour
+    finally{ showInFlight.delete(name); }
+  })();
+  showInFlight.set(name,p); return p;
+}
+// Reconciles the registry against what is actually installed and returns the models still to
+// ask about. Runs synchronously on every model-list refresh, so known models are already
+// correct by the time anything paints.
+function syncRegistry(){
+  const store=metaAll();
+  const live=new Set(modelCache.map(m=>m.name));
+  let dirty=false, ctxMoved=false;
+  for(const k of Object.keys(store)) if(!live.has(k)){ delete store[k]; dirty=true; }
+  const stale=[];
+  for(const m of modelCache){
+    const k=has(store,m.name) ? store[m.name] : null;
+    if(k && k.digest===m.digest){ if(applyMeta(m.name,k)) ctxMoved=true; }
+    else stale.push(m.name);
+  }
+  if(ctxMoved) reconcileModelLimits();
+  if(dirty) save();
+  return stale;
+}
+// Background fill for models the registry has never seen. Never awaited by boot.
+async function sweepRegistry(stale){
+  if(!stale.length) return;
+  const refresh=name=>{ if(name===els.model.value){ updateCap(); updateCtxRing(); } };
+  const sel=els.model.value;
+  // The selected model drives what is on screen, so it goes first and on its own.
+  if(stale.includes(sel)){ await enrichModel(sel); refresh(sel); }
+  const rest=stale.filter(n=>n!==sel);
+  let i=0;
+  const worker=async()=>{ while(i<rest.length){ const n=rest[i++]; await enrichModel(n); refresh(n); } };
+  await Promise.all(Array.from({length:Math.min(SHOW_CONCURRENCY,rest.length)}, worker));
+}
 
 async function loadModels(){
   try{
     const r=await fetch(base()+"/api/tags"); if(!r.ok) throw new Error("HTTP "+r.status);
     const data=await r.json();
     modelCache=(data.models||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+    // Correct what we already know before anything reads it. This also re-applies after a
+    // reconnect, where loadModels() rebuilds modelCache from scratch.
+    const stale=syncRegistry();
     reconcileModelLimits();   // fit newly pulled models to their own limits
     const names=modelCache.map(m=>m.name);
     els.model.innerHTML=names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
@@ -938,7 +1060,9 @@ async function loadModels(){
     if(!c.model || !names.includes(c.model)) c.model=pickDefaultModel()||state.settings.model;
     els.model.value=c.model;
     setConn(true, names.length+" model"+(names.length===1?"":"s")); els.banner.style.display="none";
-    updateCap(); save(); await refreshPs();
+    updateCap(); save();
+    sweepRegistry(stale);     // deliberately not awaited: never hold the first paint on it
+    await refreshPs();
   }catch(e){ setConn(false,"offline"); showCorsHelp(e); }
 }
 // Token counts in decimal units, so 131072 reads as "131k" rather than the binary "128K"
@@ -968,7 +1092,7 @@ function updateCap(){
 }
 function updateThinkToggle(){
   const btn=$("#thinkBtn"); if(!btn) return;
-  const can=modelCaps(els.model.value).includes("thinking");
+  const can=canThink(els.model.value);
   btn.style.display = can ? "" : "none";
   if(!can) return;
   const on=!!state.settings.think;
@@ -1492,7 +1616,7 @@ function chatPayload(c){
   if(sys.trim()) msgs.push({role:"system",content:sys});
   for(const nd of pathOf(c)) msgs.push({role:nd.role,content:nd.content});
   const p={model:c.model, messages:msgs, options:buildOptions(c.model)};
-  if(modelCaps(c.model).includes("thinking")) p.think=!!state.settings.think;  // avoid 400 on non-thinking models
+  if(canThink(c.model)) p.think=!!state.settings.think;  // avoid 400 on non-thinking models
   const ka=parseKeepAlive(resolveSetting("keepAlive",c.model)); if(ka.val!==undefined) p.keep_alive=ka.val;
   const fmt=resolveSetting("format",c.model); if(fmt) p.format=fmt;
   return p;
@@ -1572,8 +1696,27 @@ async function generate(c){
     touch(c); save();
     attachActions(c,an,live.dom,nodeChildren(c,an.parentId)); return an; };
   try{
-    const r=await fetch(base()+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),signal:controller.signal});
-    if(!r.ok) throw new Error("HTTP "+r.status+" "+(await r.text()).slice(0,180));
+    const post=()=>fetch(base()+"/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),signal:controller.signal});
+    let r=await post();
+    if(!r.ok){
+      const body=(await r.text()).slice(0,300);
+      // Ollama answers `think` on a model that genuinely cannot think with
+      // 400 {"error":"\"name\" does not support thinking"}. We only sent it because the manual
+      // override said to, and the refusal arrives before a single token streams, so nothing is
+      // committed and there is nothing to unpick: drop the override and ask again without it.
+      // One retry only, so a repeat failure surfaces as an ordinary error.
+      if(r.status===400 && /does not support thinking/i.test(body)
+         && payload.think!==undefined && !modelCaps(c.model).includes("thinking")){
+        clearForceThinking(c.model);
+        delete payload.think;
+        r=await post();
+        if(r.ok){
+          els.banner.style.display="block";
+          els.banner.innerHTML=`<code>${esc(c.model)}</code> does not support thinking after all, so the forced toggle has been switched off for it and this reply was generated without it.`;
+        }
+      }
+      if(!r.ok) throw new Error("HTTP "+r.status+" "+body.slice(0,180));
+    }
     const reader=r.body.getReader(),dec=new TextDecoder(); let buf="";
     while(true){
       const {value,done}=await reader.read(); if(done) break;
@@ -1957,6 +2100,7 @@ function fillSettingsForm(){
   $("#s_system").value=resolveSetting("system",model)||"";
   $("#s_keepalive").value=resolveSetting("keepAlive",model)||"";
   $("#s_format").value=resolveSetting("format",model)||"";
+  $("#s_forcethinking").checked=!!resolveSetting("forceThinking",model);
   $("#setModel").textContent=model||"";
   buildSettingsForm(resolveParams(model));
   autosizeTa($("#s_system"));
@@ -2153,6 +2297,7 @@ function needsReloadChoice(rows){
 function readForm(){
   return { baseUrl:normalizeBase($("#s_base").value), system:$("#s_system").value,
     keepAlive:$("#s_keepalive").value.trim(), format:$("#s_format").value,
+    forceThinking:$("#s_forcethinking").checked,
     autoLoad:$("#s_autoload").checked, defaultModel:$("#s_defaultmodel").value,
     oneAtOnce:$("#s_oneatonce").checked, unloadOnClose:$("#s_unloadonclose").checked,
     params:readParams() };
@@ -2383,6 +2528,10 @@ els.newChat.addEventListener("click",()=>{ newConversation(); openConversation()
 els.model.addEventListener("change",()=>{
   const c=currentConv(); c.model=els.model.value; state.settings.model=els.model.value; save();
   updateCap(); updateLoadUI(); updateCtxRing();
+  // A model the registry already knows resolves without a request; only one it has never seen
+  // costs a call, and the toggle settles when it lands.
+  const picked=els.model.value;
+  enrichModel(picked).then(()=>{ if(els.model.value===picked){ updateCap(); updateCtxRing(); } });
   // The panel shows values for the selected model, so repopulate it from the new model's layer.
   if(els.settings.classList.contains("open")) fillSettingsForm();
 });
