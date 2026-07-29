@@ -985,6 +985,14 @@
       letter-spacing: .5px
     }
 
+    .ctxmsg>.ctxatt {
+      padding: 0 12px 9px;
+      font-size: 11.5px;
+      color: var(--muted);
+      font-family: var(--mono);
+      overflow-wrap: anywhere
+    }
+
     .ctxmsg>.role.u {
       color: #8fb0ff
     }
@@ -1153,6 +1161,93 @@
       border-color: var(--muted)
     }
 
+    .composer.dragging {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary)
+    }
+
+    #attachBar {
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px
+    }
+
+    #attachBar.on {
+      display: flex
+    }
+
+    .achip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      max-width: 100%;
+      padding: 4px 4px 4px 7px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--txt-dim)
+    }
+
+    .achip:hover {
+      border-color: var(--muted)
+    }
+
+    .achip .athumb {
+      width: 26px;
+      height: 26px;
+      border-radius: 5px;
+      object-fit: cover;
+      flex: 0 0 auto;
+      background: var(--panel)
+    }
+
+    .achip .aicon {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: var(--muted)
+    }
+
+    .achip .ameta {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0
+    }
+
+    .achip .aname {
+      font-weight: 500;
+      max-width: 170px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap
+    }
+
+    .achip .asub {
+      font-size: 10.5px;
+      color: var(--muted);
+      font-family: var(--mono);
+      white-space: nowrap
+    }
+
+    .achip .ax {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--muted);
+      flex: 0 0 auto
+    }
+
+    .achip .ax:hover {
+      background: var(--border);
+      color: var(--txt)
+    }
+
     #input {
       background: transparent;
       border: none;
@@ -1171,6 +1266,99 @@
       justify-content: space-between;
       width: 100%;
       padding-top: 2px
+    }
+
+    .attach-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      flex: 0 0 auto;
+      display: inline-grid;
+      place-items: center;
+      transition: .15s
+    }
+
+    .attach-btn:hover {
+      background: var(--panel-2);
+      color: var(--txt)
+    }
+
+    .attach-btn:disabled {
+      opacity: .45;
+      cursor: default
+    }
+
+    /* ---- attachments as rendered in the thread ---- */
+    .node-att {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 9px
+    }
+
+    .node-img {
+      max-width: 260px;
+      max-height: 260px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      display: block;
+      cursor: zoom-in
+    }
+
+    .node-img.big {
+      max-width: 100%;
+      max-height: none;
+      cursor: zoom-out
+    }
+
+    .node-file {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel-2);
+      font-size: 12.5px;
+      max-width: 100%;
+      overflow: hidden
+    }
+
+    .node-file>summary {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 10px;
+      cursor: pointer;
+      color: var(--txt-dim);
+      list-style: none
+    }
+
+    .node-file>summary::-webkit-details-marker {
+      display: none
+    }
+
+    .node-file>summary:hover {
+      color: var(--txt)
+    }
+
+    .node-file .fname {
+      font-weight: 500
+    }
+
+    .node-file .fsize {
+      font-size: 10.5px;
+      color: var(--muted);
+      font-family: var(--mono)
+    }
+
+    .node-file pre {
+      margin: 0;
+      border-top: 1px solid var(--border);
+      max-height: 340px;
+      overflow: auto;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.5
     }
 
     .composer-left {
@@ -1266,6 +1454,12 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden
+    }
+
+    /* A row standing in for attachments rather than showing typed words. */
+    .qrow .qtext.attonly {
+      color: var(--muted);
+      font-style: italic
     }
 
     .qrow textarea {
@@ -2201,10 +2395,17 @@
       <div id="queueList"></div>
       <div id="composeBar" style="display:none"><span>Reverted. Type and send to branch from here.</span><button
           id="composeCancel">Cancel</button></div>
-      <div class="composer">
+      <div class="composer" id="composer">
+        <div id="attachBar"></div>
         <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
         <div class="composer-foot">
           <div class="composer-left">
+            <button class="attach-btn" id="attachBtn" data-tip="Attach a file or image"><svg width="17" height="17"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                  d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg></button>
+            <input type="file" id="fileInput" multiple style="display:none">
             <button class="think-toggle" id="thinkBtn" style="display:none" title="Thinking mode"><svg width="16"
                 height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 18h6M10 21h4" />
@@ -2276,6 +2477,18 @@
         <div class="field switch"><label>Force thinking toggle<span class="help"
               data-tip="Show the thinking button even when Ollama reports no thinking support.&#10;Only needed for a GGUF with no chat template, which Ollama cannot inspect.&#10;If the model really can't think, this switches itself back off on the first send.">?</span></label><input
             type="checkbox" id="s_forcethinking"></div>
+      </div>
+      <div class="set-group">
+        <p class="gh">Images</p>
+        <p class="gnote">Attached images are scaled to fit a pixel budget before they are sent. Resolution is what
+          decides how much of the context window an image takes, so a smaller budget costs fewer tokens.</p>
+        <div class="field"><label>Image detail<span class="help"
+              data-tip="How much of an attached image is sent to the model.&#10;&#10;Balanced (~1.15 MP): about 1,100 tokens. Right for photos, screenshots and diagrams, and what Claude and Gemini use.&#10;Detailed (~2 MP): about 2,000 tokens. Better on document scans and dense spreadsheets, where small text has to stay legible.&#10;Full resolution: the image as-is. Reads the finest print, and a large photo can cost over 10,000 tokens.&#10;&#10;Images are never enlarged, and a model's own published limit always wins.">?</span></label><select
+            id="s_imagedetail">
+            <option value="balanced">Balanced (~1.15 MP)</option>
+            <option value="detailed">Detailed (~2 MP)</option>
+            <option value="full">Full resolution</option>
+          </select></div>
       </div>
       <div id="paramFields"></div>
       <div class="set-group">
@@ -2510,12 +2723,15 @@
       // where /api/show has nothing to read and so reports no thinking capability. Per-model by
       // default, and it clears itself if the model turns out to reject `think`.
       { k: "forceThinking", label: "Force thinking toggle", type: "bool" },
+      // Global by default: one budget for everything is what most people want. Scoping it to a
+      // single model is still one click away, for a strong vision model worth spending more on.
+      { k: "imageDetail", label: "Image detail" },
     ];
     const EXTRA_BY_KEY = Object.fromEntries(EXTRA_SETTINGS.map(it => [it.k, it]));
     // Keys that can never be per-model.
     const GLOBAL_ONLY_KEYS = EXTRA_SETTINGS.filter(it => it.locked).map(it => it.k);
     // Built-in classification. Anything not listed here defaults to per-model.
-    const DEFAULT_GLOBAL_KEYS = new Set(["baseUrl", "system", "keepAlive"]);
+    const DEFAULT_GLOBAL_KEYS = new Set(["baseUrl", "system", "keepAlive", "imageDetail"]);
     // Display order for the review dialog.
     const SCOPABLE_KEYS = [...EXTRA_SETTINGS.map(it => it.k), ...SPEC_ITEMS.map(it => it.k)];
     const isParamKey = k => Object.prototype.hasOwnProperty.call(SPEC_BY_KEY, k);
@@ -2536,7 +2752,9 @@
       // Residency. autoLoadPrompted is bookkeeping for the first-run offer, not a reviewable
       // setting, so it is deliberately absent from EXTRA_SETTINGS.
       autoLoad: false, defaultModel: "", oneAtOnce: true, unloadOnClose: true, autoLoadPrompted: false,
-      forceThinking: false
+      forceThinking: false,
+      // How much of an attached image is actually sent. See IMAGE_BUDGETS.
+      imageDetail: "balanced"
     };
     function durToSeconds(s) { const m = /^(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)?$/.exec(String(s).trim()); if (!m) return null; const mult = { ns: 1e-9, us: 1e-6, "µs": 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600 }[m[2] || "s"]; return Math.round(parseFloat(m[1]) * mult); }
 
@@ -2673,6 +2891,11 @@
       if (els && els.input) {
         els.input.value = "";
         els.input.style.height = "auto";
+        // The draft belongs to the composer, not to a chat, so it goes wherever typed text goes.
+        // Nothing has been written to IndexedDB yet, so dropping the records is the whole cleanup.
+        draftAtt = [];
+        renderAttachBar();
+        clearDraftCtx();
         syncSendButton();
       }
     }
@@ -2711,8 +2934,23 @@
     function pathOf(c) { const p = []; let id = c.leafId, seen = new Set(); while (id && c.nodes[id] && !seen.has(id)) { seen.add(id); p.push(c.nodes[id]); id = c.nodes[id].parentId; } return p.reverse(); }
     function leafDescend(c, id) { let n = c.nodes[id]; while (n) { const k = nodeChildren(c, n.id); if (!k.length) return n.id; const pref = (n.lastChild && c.nodes[n.lastChild] && c.nodes[n.lastChild].parentId === n.id) ? c.nodes[n.lastChild] : k[k.length - 1]; n = pref; } return id; }
     function setLeaf(c, id) { c.leafId = id; let n = c.nodes[id]; while (n && n.parentId) { const p = c.nodes[n.parentId]; if (p) p.lastChild = n.id; n = p; } }
-    function createNode(c, parentId, role, content, thinking, meta) { const id = uid(); c.nodes[id] = { id, parentId: parentId || null, role, content: content || "", thinking: thinking || "", meta: meta || "", ord: nextOrd() }; return c.nodes[id]; }
-    function addNode(c, parentId, role, content, thinking, meta) { const n = createNode(c, parentId, role, content, thinking, meta); setLeaf(c, n.id); return n; }
+    /* `att` holds a small descriptor per attachment: {id, kind, name, size, mime, w, h}. The bytes
+       (an image's blob and base64, a text file's contents) live in IndexedDB under the same id.
+
+       Splitting it this way is what lets the name, size and kind be read synchronously. The thread
+       can label an attachment before its bytes arrive, and refusing a model switch has to know
+       whether a chat contains images without waiting on a database. Defaulted to [] so every node
+       saved before attachments existed stays valid with no migration. */
+    function createNode(c, parentId, role, content, thinking, meta, att) { const id = uid(); c.nodes[id] = { id, parentId: parentId || null, role, content: content || "", thinking: thinking || "", meta: meta || "", att: Array.isArray(att) ? att.map(a => ({ ...a })) : [], ord: nextOrd() }; return c.nodes[id]; }
+    function addNode(c, parentId, role, content, thinking, meta, att) { const n = createNode(c, parentId, role, content, thinking, meta, att); setLeaf(c, n.id); return n; }
+    const attOf = n => (n && Array.isArray(n.att)) ? n.att : [];
+    const attIds = n => attOf(n).map(a => a && a.id).filter(Boolean);
+    // The descriptor is what a node keeps; the cache is what carries the payload. A miss means the
+    // bytes are gone (a cleared database), so the descriptor stands alone and the payload builder
+    // skips it rather than sending undefined.
+    const attRecords = n => attOf(n).map(a => attachCache.get(a.id) || a);
+    const attDescriptor = r => ({ id: r.id, kind: r.kind, name: r.name, size: r.size, mime: r.mime, w: r.w, h: r.h });
+    const nodeHasImage = n => attOf(n).some(a => a && a.kind === "image");
 
     /* ============ markdown ============ */
     function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
@@ -2771,7 +3009,13 @@
       input: $("#input"), send: $("#send"), sendIcon: $("#sendIcon"),
       settings: $("#settings"), overlay: $("#overlay"), settingsBtn: $("#settingsBtn"), closeSettings: $("#closeSettings"),
       themeBtn: $("#themeBtn"), themeIcon: $("#themeIcon"), paramFields: $("#paramFields"),
+      composer: $("#composer"), attachBar: $("#attachBar"), attachBtn: $("#attachBtn"), fileInput: $("#fileInput"),
     };
+
+    /* What the composer is holding but has not sent. Declared up here rather than beside the rest
+       of the attachment code because the ring and the send button both read it and both are
+       defined earlier in this file. See the attachments section for what a record contains. */
+    let draftAtt = [];
 
     /* ============ theme ============ */
     const ICON_SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
@@ -2793,6 +3037,9 @@
     function modelCaps(name) { const m = modelCache.find(x => x.name === name); return (m && m.capabilities) || []; }
     // What the model can do, plus the manual override for one it cannot be asked about.
     function canThink(name) { return modelCaps(name).includes("thinking") || !!resolveSetting("forceThinking", name); }
+    // No override twin for this one: thinking can be forced because a missing chat template hides
+    // a real capability, but an encoder a model does not have cannot be switched on.
+    function modelHasVision(name) { return modelCaps(name).includes("vision"); }
     // The forced toggle turned out to be wrong. Writes a per-model false rather than clearing the
     // key, so a global "on" is shadowed for this model alone and every other model keeps its own.
     function clearForceThinking(model) {
@@ -2830,13 +3077,30 @@
       for (const k of Object.keys(info)) if (k.endsWith(".context_length")) { const n = num(k); if (n) return n; }
       return 0;
     }
+    /* The largest image the model will take, where it says so. Vision parameters sit in
+       model_info under the architecture's own namespace exactly as context_length does, so this
+       is the same suffix scan. qwen3-vl reports `qwen35.vision.longest_edge` as a pixel AREA
+       budget (16777216 = 4096 squared), not an edge length. Gemma reports the vision capability
+       and no vision keys at all, which is why the Image detail setting cannot be replaced by
+       detection. Extracted rather than storing model_info wholesale: the blob runs to hundreds
+       of keys and this cache is written to localStorage by save(). */
+    function imgMaxFromModelInfo(info) {
+      if (!info) return 0;
+      for (const k of Object.keys(info)) {
+        if (!k.endsWith(".vision.longest_edge")) continue;
+        const n = Number(info[k]);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return 0;
+    }
     // Everything worth keeping from one /api/show, tied to the exact blob it describes.
     function metaFromShow(d, digest) {
       return {
         digest,
         capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
         details: (d && d.details) || {},
-        ctx: ctxFromModelInfo(d && d.model_info, ((d && d.details) || {}).family)
+        ctx: ctxFromModelInfo(d && d.model_info, ((d && d.details) || {}).family),
+        imgMax: imgMaxFromModelInfo(d && d.model_info)
       };
     }
     // Folds a stored entry onto the live /api/tags entry, in place, so every existing reader
@@ -2989,7 +3253,16 @@
     function updateCtxRing() {
       const ring = $("#ctxRing"); if (!ring) return;
       const c = currentConv();
-      const { used, exact } = pathUsage(c);
+      let { used, exact } = pathUsage(c);
+      /* A measured draft is prompt_eval_count for the whole message list INCLUDING what the
+         composer holds, so it is an absolute figure and replaces the path reading rather than
+         adding to it. Before that reading lands the ring keeps showing the path and goes dashed,
+         because the attachment's cost genuinely is not in the number yet. */
+      const pending = draftAtt.length > 0;
+      if (pending) {
+        if (draftCtxKey && draftCtxKey === draftKey(c)) { used = draftCtx; exact = true; }
+        else exact = false;
+      }
       const limit = ctxLimit(c);
       const prog = ring.querySelector(".prog");
       // Circumference comes from the markup's own radius, so resizing the ring is a one-place
@@ -3007,7 +3280,9 @@
         `Used: ${pct.toFixed(2)}% (${tokens(used)})`,
         `Left: ${(100 - pct).toFixed(2)}% (${tokens(left)})`,
       ];
-      if (!exact) lines.push(`At least this much. Exact after the next reply.`);
+      if (pending && exact) lines.push(`Includes what is attached but not yet sent.`);
+      else if (pending) lines.push(`Pricing what is attached…`);
+      else if (!exact) lines.push(`At least this much. Exact after the next reply.`);
       if (frac >= 0.9) lines.push(`Nearly full. Ollama starts dropping the oldest messages silently.`);
       ring.dataset.tip = lines.join("\n");
       ring.style.display = "";
@@ -3247,9 +3522,13 @@
       if (choice !== "del") return;
       // Deleting the chat a reply is streaming into would commit that reply to a dropped record.
       if (live && live.convId === id && controller) controller.abort();
+      // Collected before the chat goes, since afterwards there is nothing left pointing at them.
+      const orphaned = c ? Object.values(c.nodes || {}).flatMap(attIds) : [];
+      for (const it of ((c && c.queue) || [])) for (const a of (it.att || [])) if (a && a.id) orphaned.push(a.id);
       delete state.conversations[id]; compose = null;
       if (state.currentId === id) { const rest = sortedConvs(); state.currentId = rest.length ? rest[0].id : null; if (!state.currentId) newConversation(); }
       save(); openConversation();
+      if (orphaned.length) attachDelete(orphaned);   // not awaited: the UI is already correct
     }
 
     /* ============ thread ============ */
@@ -3298,14 +3577,23 @@
       renderSidebar();
       const c = currentConv();
       els.thread.querySelectorAll(".row").forEach(n => n.remove());
+      releaseUrls("thread");   // the rows holding these are gone; their blob URLs go with them
       els.model.value = c.model || state.settings.model; updateCap();
+      const attSlots = [];
       for (const node of pathOf(c)) {
         const dom = rowNode(node.role);
         if (node.thinking && node.thinking.trim()) { dom.think.style.display = ""; dom.tbody.textContent = node.thinking; }
+        // Above the message, because an attachment is context for what was asked, not an aside.
+        if (attOf(node).length) {
+          const box = document.createElement("div"); box.className = "node-att";
+          dom.body.insertBefore(box, dom.content);
+          attSlots.push({ node, box });
+        }
         dom.content.innerHTML = md(node.content);
         els.thread.appendChild(dom.row);
         attachActions(c, node, dom, nodeChildren(c, node.parentId));
       }
+      paintAttachments(attSlots);
       // A reply still streaming into this conversation was detached by the wipe above, so give it
       // a fresh row and repaint what has arrived so far. Generation itself is never interrupted.
       if (live && live.convId === c.id) {
@@ -3482,13 +3770,18 @@
     // One button, two jobs, and the composer decides which. Typed something and it sends, because
     // that is plainly what you meant even mid-reply: the message queues. Empty while the model is
     // working and it stops. Esc always stops, so there is an unambiguous way out either way.
-    function isStopMode() { return (!!controller || sending) && !els.input.value.trim(); }
+    // An attachment counts as something to send, so the button stays Send while one is held even
+    // with the box empty: the message queues, same as typed text would.
+    function isStopMode() { return (!!controller || sending) && !els.input.value.trim() && !draftAtt.length; }
     function syncSendButton() {
       const stop = isStopMode();
       els.send.classList.toggle("stop", stop);
       els.send.dataset.tip = stop ? (controller ? "Stop generating (Esc)" : "Cancel loading (Esc)") : "Send";
       els.sendIcon.innerHTML = stop ? ICON_STOP : ICON_SEND;
-      els.send.disabled = stop ? false : (!els.model.value || !els.input.value.trim());
+      els.send.disabled = stop ? false : (!els.model.value || (!els.input.value.trim() && !draftAtt.length));
+      // Nothing to attach to without a model, and which model decides whether images are allowed
+      // at all, so the button follows the picker.
+      if (els.attachBtn) els.attachBtn.disabled = !els.model.value;
     }
     function setBusy(on) {
       syncSendButton();
@@ -3501,15 +3794,382 @@
       syncSendButton();
       if (!on) updateGate();
     }
+
+    /* ============ attachments ============
+       Ollama's message schema is {role, content, images[]}. Images are native and go in
+       `images` as raw base64, vision models only. Text files are not a concept at all: the
+       file's text is inlined into `content` and the server never knows a file was involved.
+       So both kinds are stored here and re-composed into that shape at payload time.
+
+       Bytes live in IndexedDB, never in localStorage. The saved state blob is written by
+       save() into a quota of a few megabytes, and one phone photo as base64 exceeds it on its
+       own, with the failure swallowed as a console warning. IndexedDB stores Blobs without
+       base64's 33% inflation, has orders of magnitude more room, and behaves the same in the
+       browser under serve.py as it does inside the Tauri webview. A node keeps only ids. */
+    const ATT_DB = "deskollama", ATT_STORE = "attachments";
+    let attDbPromise = null;
+    function attDb() {
+      if (attDbPromise) return attDbPromise;
+      attDbPromise = new Promise((res, rej) => {
+        const rq = indexedDB.open(ATT_DB, 1);
+        rq.onupgradeneeded = () => { const db = rq.result; if (!db.objectStoreNames.contains(ATT_STORE)) db.createObjectStore(ATT_STORE, { keyPath: "id" }); };
+        rq.onsuccess = () => res(rq.result);
+        rq.onerror = () => rej(rq.error);
+      });
+      return attDbPromise;
+    }
+    // Every call funnels through here so a browser with IndexedDB blocked (private mode, a
+    // hardened profile) degrades to attachments that work for the turn and vanish on reload,
+    // rather than throwing somewhere that would take the send down with it.
+    async function attTx(mode, fn) {
+      try {
+        const db = await attDb();
+        return await new Promise((res, rej) => {
+          const tx = db.transaction(ATT_STORE, mode), store = tx.objectStore(ATT_STORE);
+          let out;
+          try { out = fn(store); } catch (e) { rej(e); return; }
+          tx.oncomplete = () => res(out);
+          tx.onerror = () => rej(tx.error);
+          tx.onabort = () => rej(tx.error);
+        });
+      } catch (e) { console.warn("attachment store unavailable:", e); return null; }
+    }
+    const attReq = rq => new Promise((res, rej) => { rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+
+    /* The live copy of every attachment this session has touched, keyed by id. chatPayload()
+       needs a record synchronously while IndexedDB is async, so hydrate() fills this first and
+       the payload builder only ever reads it. Also what keeps a freshly attached file available
+       before it has been committed to disk. */
+    const attachCache = new Map();
+    async function attachPut(rec) {
+      attachCache.set(rec.id, rec);
+      await attTx("readwrite", st => st.put(rec));
+      return rec;
+    }
+    async function hydrate(ids) {
+      const missing = [...new Set(ids)].filter(id => id && !attachCache.has(id));
+      if (!missing.length) return;
+      // Every request's onsuccess is guaranteed to fire before the transaction completes, so
+      // collecting into a plain array and applying afterwards needs no per-request awaiting.
+      const found = await attTx("readonly", st => {
+        const out = [];
+        for (const id of missing) { const rq = st.get(id); rq.onsuccess = () => { if (rq.result) out.push(rq.result); }; }
+        return out;
+      });
+      for (const rec of (found || [])) attachCache.set(rec.id, rec);
+    }
+    async function attachDelete(ids) {
+      for (const id of ids) attachCache.delete(id);
+      if (ids.length) await attTx("readwrite", st => { for (const id of ids) st.delete(id); });
+    }
+    // Records outlive the nodes that referenced them when a chat or a branch is deleted while
+    // the tab is closed, so boot sweeps anything nothing points at any more.
+    async function attachGC() {
+      const live = new Set();
+      for (const c of Object.values(state.conversations)) {
+        for (const n of Object.values((c && c.nodes) || {})) for (const id of attIds(n)) live.add(id);
+        // A queued message's attachments are already on disk but have no node yet.
+        for (const it of ((c && c.queue) || [])) for (const a of (it.att || [])) if (a && a.id) live.add(a.id);
+      }
+      for (const a of draftAtt) live.add(a.id);
+      const keys = await attTx("readonly", st => attReq(st.getAllKeys()));
+      if (!Array.isArray(keys)) return;
+      const dead = keys.filter(k => !live.has(k));
+      if (dead.length) await attachDelete(dead);
+    }
+
+    /* ---- what we accept ----
+       .svg is text/XML, not a raster image: handing it to a vision encoder sends markup to
+       something that cannot read markup, so it is classed with the code files it resembles. */
+    const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
+    const TEXT_EXT = /\.(txt|md|markdown|json|jsonc|csv|tsv|py|rs|js|mjs|cjs|ts|tsx|jsx|html|htm|css|scss|go|c|h|cpp|hpp|cc|java|kt|swift|rb|php|sh|bash|zsh|fish|yml|yaml|xml|svg|log|toml|sql|ini|cfg|conf|env|bat|cmd|ps1|lua|r|pl|dart|vue|svelte|gradle|dockerfile|gitignore|makefile)$/i;
+    const isImageFile = f => (f.type || "").startsWith("image/") ? !/svg/i.test(f.type) : IMAGE_EXT.test(f.name);
+    const isTextFile = f => (f.type || "").startsWith("text/") || TEXT_EXT.test(f.name) || /^(dockerfile|makefile|licen[cs]e|readme)$/i.test(f.name);
+    function fmtBytes(n) {
+      if (n < 1024) return n + " B";
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+      return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+    // The fence language for an inlined text file. Only a hint to the model, so an unknown
+    // extension is better left blank than guessed at.
+    const FENCE_ALIAS = { js: "js", mjs: "js", cjs: "js", py: "py", rs: "rust", ts: "ts", tsx: "tsx", jsx: "jsx", md: "md", markdown: "md", yml: "yaml", yaml: "yaml", sh: "bash", bash: "bash", zsh: "bash", ps1: "powershell", bat: "bat", cmd: "bat", h: "c", hpp: "cpp", cc: "cpp", kt: "kotlin", rb: "ruby", htm: "html" };
+    function fenceLang(name) {
+      const ext = (name.split(".").pop() || "").toLowerCase();
+      if (!ext || ext === name.toLowerCase()) return "";
+      return FENCE_ALIAS[ext] || (/^[a-z0-9]{1,12}$/.test(ext) ? ext : "");
+    }
+
+    /* ---- image budgets ----
+       Token cost tracks pixel AREA, not edge length, so the budget is expressed in pixels.
+       Every frontier product clamps rather than sending originals, and they converge on the
+       same band: Anthropic ~1.15 MP (1568px long edge, w*h/750, so ~1,600 tokens at most),
+       OpenAI fits a 2048 box then a 768 short side, Gemini tiles 768px crops at 258 tokens
+       each. Balanced sits at Anthropic's number because past roughly this point vision
+       transformers show sharply diminishing returns while cost keeps growing linearly.
+
+       The exception is dense text. A 1920x1080 screenshot at Balanced becomes ~1428x803 and
+       14px text stays legible, but an A4 page scanned at 300dpi (8.7 MP) drops to ~902x1276,
+       putting 10pt text at 4-5px. Detailed and Full exist for that case. */
+    const IMAGE_BUDGETS = {
+      balanced: { label: "Balanced (~1.15 MP)", pixels: 1150000 },
+      detailed: { label: "Detailed (~2 MP)", pixels: 2000000 },
+      full: { label: "Full resolution", pixels: Infinity },
+    };
+    function imageDetailOf(model) {
+      const v = resolveSetting("imageDetail", model);
+      return IMAGE_BUDGETS[v] ? v : "balanced";
+    }
+    function imageBudgetFor(model) {
+      const want = IMAGE_BUDGETS[imageDetailOf(model)].pixels;
+      const meta = metaAll()[model];
+      const cap = Number(meta && meta.imgMax) || 0;   // harvested by metaFromShow
+      return cap > 0 ? Math.min(want, cap) : want;    // the model's published limit always wins
+    }
+    const loadBitmap = blob => (typeof createImageBitmap === "function"
+      ? createImageBitmap(blob)
+      : new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(blob); }));
+    /* Scales `blob` down to fit `budget` pixels of area and returns raw base64 plus the
+       dimensions actually sent. Never enlarges, and skips re-encoding entirely when the image
+       already fits, so an in-budget PNG reaches the model byte-identical. */
+    async function fitImage(blob, budget) {
+      let w = 0, h = 0, bmp = null;
+      try { bmp = await loadBitmap(blob); w = bmp.width; h = bmp.height; } catch { return null; }
+      const area = w * h;
+      const scale = (budget === Infinity || area <= budget) ? 1 : Math.sqrt(budget / area);
+      let out = blob, ow = w, oh = h;
+      if (scale < 1) {
+        ow = Math.max(1, Math.round(w * scale)); oh = Math.max(1, Math.round(h * scale));
+        const cv = document.createElement("canvas"); cv.width = ow; cv.height = oh;
+        const cx = cv.getContext("2d"); cx.imageSmoothingQuality = "high";
+        cx.drawImage(bmp, 0, 0, ow, oh);
+        // PNG for anything that might carry alpha, so a transparent screenshot is not
+        // flattened onto black; JPEG elsewhere, where it is far smaller at the same quality.
+        const keepAlpha = /png|webp|gif/i.test(blob.type || "");
+        out = await new Promise(r => cv.toBlob(r, keepAlpha ? "image/png" : "image/jpeg", 0.9)) || blob;
+      }
+      if (bmp && bmp.close) bmp.close();
+      return { base64: await blobToBase64(out), mime: out.type || blob.type || "image/png", w: ow, h: oh, srcW: w, srcH: h };
+    }
+    // Raw base64, no data: prefix. Reading it off the blob with its own mime is why nothing here
+    // needs to regex a prefix back off a string later.
+    function blobToBase64(blob) {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => { const s = String(r.result); res(s.slice(s.indexOf(",") + 1)); };
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+    }
+    const readText = file => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(file); });
+
+    /* ---- the composer draft ----
+       `draftAtt` is declared with the refs near the top, since the ring and the send button read
+       it from earlier in the file. A record is
+         { id, kind:"image"|"text", name, size, mime, send, blob?, w?, h?, srcW?, srcH? }
+       where `send` is raw base64 for an image and the file's text for a text file.
+
+       Held in memory and only written to IndexedDB when the message is actually sent, so a file
+       attached and then abandoned leaves nothing behind. Cleared by clearInput(), which means
+       switching chats clears it exactly as it already clears typed text. */
+    // Turns dropped/pasted/picked files into draft records, refusing what we cannot handle.
+    // Refusals are collected rather than raised one at a time: dropping a folder of mixed files
+    // should explain itself once, not open eight dialogs.
+    async function addFiles(files) {
+      const list = Array.from(files || []); if (!list.length) return;
+      const model = els.model.value, vision = modelHasVision(model);
+      const refused = [];
+      for (const f of list) {
+        if (isImageFile(f)) {
+          if (!vision) { refused.push(`<b>${esc(f.name)}</b> is an image, and <b>${esc(model || "no model")}</b> cannot see images.`); continue; }
+          const fit = await fitImage(f, imageBudgetFor(model));
+          if (!fit) { refused.push(`<b>${esc(f.name)}</b> could not be read as an image.`); continue; }
+          draftAtt.push({
+            id: uid(), kind: "image", name: f.name, size: f.size, mime: fit.mime,
+            blob: f, send: fit.base64, w: fit.w, h: fit.h, srcW: fit.srcW, srcH: fit.srcH
+          });
+        } else if (isTextFile(f)) {
+          try {
+            const text = await readText(f);
+            draftAtt.push({ id: uid(), kind: "text", name: f.name, size: f.size, mime: f.type || "text/plain", send: text });
+          } catch { refused.push(`<b>${esc(f.name)}</b> could not be read as text.`); }
+        } else {
+          refused.push(`<b>${esc(f.name)}</b> is not a supported type.`);
+        }
+      }
+      renderAttachBar();
+      syncSendButton();
+      measureDraft();
+      if (refused.length) {
+        await dialog(refused.length > 1 ? "Some files were not attached" : "That file was not attached",
+          refused.join("<br>") + `<br><br><span style="color:var(--muted)">Images need a vision model. Text and code files work with any model. Anything else has to be converted first.</span>`,
+          [{ label: "OK", value: "ok", cancel: true, primary: true }]);
+      }
+    }
+    // Committed at send time: draft records become real rows and the node keeps their descriptors.
+    async function commitDraft(records) {
+      for (const rec of records) await attachPut(rec);
+    }
+    /* Refuses a model that cannot see images for a chat that contains them. Every node is checked
+       rather than just the visible branch: an image sitting on a branch you are not looking at is
+       one branch switch away from being sent to a model that cannot read it.
+
+       Synchronous because the caller has to decide before committing the switch, which the
+       descriptor on the node makes possible without touching IndexedDB. The dialog is fired and
+       not awaited, since the answer is already known. */
+    function visionSwitchAllowed(c, next) {
+      if (!next || !c || next === c.model) return true;
+      if (modelHasVision(next)) return true;
+      const inHistory = Object.values(c.nodes || {}).filter(nodeHasImage).length;
+      const inDraft = draftAtt.filter(a => a.kind === "image").length;
+      if (!inHistory && !inDraft) return true;
+      // Two genuinely different situations, so they get told apart: an image already in the
+      // conversation cannot be taken back, while one merely attached can just be removed.
+      const where = inHistory
+        ? `<b>${esc(c.title || "This chat")}</b> contains ${inHistory === 1 ? "an image" : "images"}`
+        : `You have ${inDraft === 1 ? "an image" : "images"} attached`;
+      const fix = inHistory
+        ? `Start a new chat to use ${esc(next)}.`
+        : `Remove ${inDraft === 1 ? "it" : "them"} first to use ${esc(next)}.`;
+      dialog("That model cannot see images",
+        `${where}, and <b>${esc(next)}</b> has no vision support, so it would answer as though `
+        + `${(inHistory === 1 || inDraft === 1) ? "it were" : "they were"} not there.`
+        + `<br><br><span style="color:var(--muted)">Still on ${esc(c.model)}. ${fix}</span>`,
+        [{ label: "OK", value: "ok", cancel: true, primary: true }]);
+      return false;
+    }
+    function removeDraft(id) {
+      draftAtt = draftAtt.filter(a => a.id !== id);
+      renderAttachBar();
+      syncSendButton();
+      measureDraft();
+    }
+    /* Object URLs are handed out per render and have to be handed back, or every re-render leaks
+       a blob for as long as the page lives. Each surface owns a bucket it revokes before it
+       repaints, rather than one shared list that either surface could pull out from under the
+       other. */
+    const urlBuckets = { draft: [], thread: [] };
+    function blobUrl(bucket, blob) {
+      const u = URL.createObjectURL(blob);
+      urlBuckets[bucket].push(u);
+      return u;
+    }
+    function releaseUrls(bucket) {
+      for (const u of urlBuckets[bucket]) { try { URL.revokeObjectURL(u); } catch { } }
+      urlBuckets[bucket] = [];
+    }
+    const ICON_FILE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+    // The second line is the honest one: for an image it reports the size actually sent and the
+    // original it came from, so a resize is something the user sees rather than something the app
+    // did quietly on their behalf.
+    function attachSubtitle(a) {
+      if (a.kind !== "image") return fmtBytes(a.size);
+      const sent = `${a.w}×${a.h}`;
+      return (a.srcW && (a.srcW !== a.w || a.srcH !== a.h)) ? `${sent} · from ${a.srcW}×${a.srcH}` : sent;
+    }
+    /* Fills the placeholder each node with attachments got during render. openConversation() is
+       synchronous and has many callers, so rather than making all of them async the containers go
+       up empty and are populated once the bytes arrive. In practice the records are already cached
+       and this lands in the same frame; after a reload it costs one IndexedDB read. */
+    async function paintAttachments(slots) {
+      if (!slots.length) return;
+      await hydrate(slots.flatMap(s => attIds(s.node)));
+      for (const { node, box } of slots) {
+        if (!box.isConnected) continue;             // the thread was re-rendered while we waited
+        for (const rec of attRecords(node)) {
+          if (rec.kind === "image") {
+            const img = document.createElement("img");
+            img.className = "node-img"; img.alt = rec.name; img.title = `${rec.name} · ${rec.w}×${rec.h}`;
+            img.src = rec.blob ? blobUrl("thread", rec.blob) : "data:" + (rec.mime || "image/png") + ";base64," + rec.send;
+            img.addEventListener("click", () => img.classList.toggle("big"));
+            box.appendChild(img);
+          } else {
+            const d = document.createElement("details"); d.className = "node-file";
+            const sum = document.createElement("summary");
+            sum.innerHTML = `${ICON_FILE}<span class="fname"></span><span class="fsize"></span>`;
+            sum.querySelector(".fname").textContent = rec.name;
+            sum.querySelector(".fsize").textContent = fmtBytes(rec.size);
+            const pre = document.createElement("pre"); pre.textContent = rec.send;
+            d.append(sum, pre);
+            box.appendChild(d);
+          }
+        }
+      }
+    }
+    // Stop winds a prompt back into the composer, and its attachments belong with it or the
+    // message you resend is not the message you stopped.
+    async function restoreDraft(node) {
+      const ids = attIds(node); if (!ids.length) return;
+      await hydrate(ids);
+      // Only what still has its bytes can be resent. The ids are kept, so committing again
+      // overwrites the same rows rather than duplicating them.
+      draftAtt = attRecords(node).filter(r => typeof r.send === "string").map(r => ({ ...r }));
+      renderAttachBar(); syncSendButton(); measureDraft();
+    }
+    function renderAttachBar() {
+      const bar = els.attachBar; if (!bar) return;
+      releaseUrls("draft");
+      bar.innerHTML = "";
+      bar.classList.toggle("on", draftAtt.length > 0);
+      for (const a of draftAtt) {
+        const chip = document.createElement("div"); chip.className = "achip";
+        const head = a.kind === "image"
+          ? `<img class="athumb" src="${escAttr(blobUrl("draft", a.blob))}" alt="">`
+          : `<span class="aicon">${ICON_FILE}</span>`;
+        chip.innerHTML = `${head}<span class="ameta"><span class="aname" title="${escAttr(a.name)}">${esc(a.name)}</span><span class="asub">${esc(attachSubtitle(a))}</span></span>`;
+        const x = document.createElement("button"); x.className = "ax"; x.title = "Remove"; x.innerHTML = "&times;";
+        x.addEventListener("click", () => removeDraft(a.id));
+        chip.appendChild(x);
+        bar.appendChild(chip);
+      }
+    }
     /* ============ context measurement ============
        The request body for a chat turn, shared with measureCtx() so a reading can never drift
        from the thing it claims to measure. The system prompt, the path, the think flag and the
        load-time options all affect how many tokens Ollama counts, so all four have to match. */
-    function chatPayload(c) {
+    /* One message out of a node plus its attachments. Text files become fenced blocks BEFORE the
+       typed text, because a question read after its data is answered against the data; the other
+       way round the model commits to an answer before it has seen what it is answering about.
+       The `[File: name]` label is the entire mechanism by which the model knows a file was
+       attached, since Ollama has no file concept, so it is kept plain rather than clever. */
+    function messageFor(role, content, recs) {
+      // `send` is absent only when the bytes could not be read back, so those are dropped: a
+      // fenced block reading "undefined" would be worse than an attachment quietly missing.
+      const files = recs.filter(r => r.kind === "text" && typeof r.send === "string");
+      const imgs = recs.filter(r => r.kind === "image" && typeof r.send === "string");
+      let body = "";
+      for (const f of files) {
+        const text = f.send.replace(/\n+$/, "");           // the file's own trailing newline
+        // A markdown or documentation file contains fences of its own, and three backticks would
+        // let the file's content escape the block it is supposed to be inside. The delimiter has
+        // to be longer than the longest run the content itself holds.
+        const longest = (text.match(/`+/g) || []).reduce((m, s) => Math.max(m, s.length), 0);
+        const fence = "`".repeat(Math.max(3, longest + 1));
+        body += `[File: ${f.name}]\n${fence}${fenceLang(f.name)}\n${text}\n${fence}\n\n`;
+      }
+      body += content || "";
+      const msg = { role, content: body.trim() };
+      if (imgs.length) msg.images = imgs.map(r => r.send);
+      return msg;
+    }
+    /* Async only because attachment bytes come from IndexedDB. Both callers already were.
+
+       `includeDraft` is measurement-only. What the composer is holding has not been sent, so
+       pricing it is the whole point for the ring and would be corruption for generation: a file
+       attached while a reply streams would otherwise get appended to the queued message behind
+       it, which is a message the user never wrote. */
+    async function chatPayload(c, includeDraft) {
+      const path = pathOf(c);
+      await hydrate(path.flatMap(attIds));
       const msgs = [];
       const sys = convSystem(c);   // this chat's own override, else the layered setting
       if (sys.trim()) msgs.push({ role: "system", content: sys });
-      for (const nd of pathOf(c)) msgs.push({ role: nd.role, content: nd.content });
+      for (const nd of path) msgs.push(messageFor(nd.role, nd.content, attRecords(nd)));
+      // Only ever the chat on screen: the queue drains into chats you have already moved on
+      // from, and the composer's draft does not belong to those.
+      if (includeDraft && draftAtt.length && c && c.id === state.currentId) {
+        const draft = messageFor("user", els.input.value.trim(), draftAtt);
+        if (draft.content || (draft.images && draft.images.length)) msgs.push(draft);
+      }
       const p = { model: c.model, messages: msgs, options: buildOptions(c.model) };
       if (canThink(c.model)) p.think = !!state.settings.think;  // avoid 400 on non-thinking models
       const ka = parseKeepAlive(resolveSetting("keepAlive", c.model)); if (ka.val !== undefined) p.keep_alive = ka.val;
@@ -3525,9 +4185,19 @@
     function measureIdle() {
       return owns && !controller && !sending && !draining && !loadingName && !ejectingName;
     }
+    /* What a pending draft costs, and which draft that figure belongs to. Kept out of the node
+       tree deliberately: nothing has been sent, so there is nothing to record it against, and it
+       has to evaporate the moment the composer changes rather than linger as a stale number. */
+    let draftCtx = 0, draftCtxKey = "";
+    const draftKey = c => draftAtt.length ? `${c.id}|${c.model}|${draftAtt.map(a => a.id).join(",")}|${els.input.value.trim().length}` : "";
+    function clearDraftCtx() { draftCtx = 0; draftCtxKey = ""; }
     // The node a reading would describe. The path has to END at the reply being measured, or the
     // message list would include a pending user turn and the number would belong to nothing.
+    // A draft is the exception: it IS a pending user turn, and pricing it is the point.
     function unmeasuredTail(c) {
+      if (draftAtt.length && c && c.id === state.currentId) {
+        return draftKey(c) === draftCtxKey ? null : { id: "\0draft" };
+      }
       const path = pathOf(c);
       const last = path[path.length - 1];
       if (!last || last.role !== "assistant") return null;
@@ -3538,6 +4208,14 @@
       cancelMeasure();
       measureTimer = setTimeout(() => { measureTimer = null; measureCtx(state.currentId); }, 400);
     }
+    /* Attachments are the one thing worth re-pricing mid-composition, and only when they change.
+       Hanging this off typing instead would re-run a real prompt evaluation over a large file
+       every 400ms while the user writes their question. */
+    function measureDraft() {
+      clearDraftCtx();
+      updateCtxRing();
+      if (draftAtt.length) scheduleMeasure();
+    }
     /* Learns the one number generation cannot give us: occupancy including the newest reply.
        prompt_eval_count is exact for whatever message list you hand it, so we hand it the path
        and read the count back. num_predict is a runtime option, not one of LOAD_TIME_KEYS, so
@@ -3547,7 +4225,7 @@
       if (!measureIdle()) return;
       if (!loadedModels.has(c.model)) return;      // never load a model just to take a reading
       const node = unmeasuredTail(c); if (!node) return;
-      const payload = { ...chatPayload(c), stream: false };
+      const payload = { ...(await chatPayload(c, true)), stream: false };
       payload.options = { ...payload.options, num_predict: 1 };
       measureAbort = new AbortController();
       try {
@@ -3558,6 +4236,15 @@
         if (!r.ok) return;
         const n = (await r.json()).prompt_eval_count;
         if (!Number.isFinite(n) || n <= 0) return;
+        if (node.id === "\0draft") {
+          // Keyed to the draft that was measured, so a file removed while the request was in
+          // flight cannot leave its cost showing on the ring.
+          const key = draftKey(c);
+          if (!key) return;
+          draftCtx = n; draftCtxKey = key;
+          updateCtxRing();
+          return;                                  // nothing sent, so nothing to persist
+        }
         if (!c.nodes[node.id]) return;             // the branch went away while we were asking
         node.ctx = n; node.mdl = c.model; save();
         updateCtxRing();
@@ -3571,6 +4258,9 @@
     // "ok" | "aborted" | "error" so the drain loop knows whether to carry on.
     async function generate(c) {
       const parentId = c.leafId;   // the assistant reply attaches under the current leaf (last user node)
+      // Built before anything is mounted, because it awaits attachment bytes and a row on screen
+      // with no controller behind it yet is a window where Esc has nothing to abort.
+      const payload = { ...(await chatPayload(c)), stream: true };
       const dom = rowNode("assistant");
       // Only mount the row when this chat is on screen. Left detached otherwise, and
       // openConversation() re-attaches the stream to a fresh row if you come back mid-reply.
@@ -3580,7 +4270,6 @@
       // here and openConversation() re-attaches it to a fresh row when the chat comes back.
       live = { convId: c.id, dom, assistant };
       let status = "ok";
-      const payload = { ...chatPayload(c), stream: true };
       cancelMeasure();   // a reading in flight is about to be out of date anyway
       controller = new AbortController(); setBusy(true); updateCtxRing(); let stats = null;
       const commit = () => {
@@ -3671,8 +4360,10 @@
     const queueOf = c => (Array.isArray(c.queue) ? c.queue : (c.queue = []));
     function halt(msg) { queueHalted = true; queueHaltMsg = msg; }
     function resumeQueue() { queueHalted = false; queueHaltMsg = ""; }
-    function enqueue(c, text, front) {
-      const item = { id: uid(), text };
+    // `att` rides along as descriptors, so a queued message keeps its attachments across a reload
+    // just as its text does. The bytes were written to IndexedDB before this was called.
+    function enqueue(c, text, front, att) {
+      const item = { id: uid(), text, att: Array.isArray(att) ? att.map(a => ({ ...a })) : [] };
       front ? queueOf(c).unshift(item) : queueOf(c).push(item);
       touch(c); save(); return item;
     }
@@ -3698,7 +4389,7 @@
           const item = queueOf(c).shift();
           // Posted before the model is loaded, so the message is anchored to the chat it was
           // typed in from the moment you press send.
-          const un = addNode(c, c.leafId, "user", item.text);
+          const un = addNode(c, c.leafId, "user", item.text, null, null, item.att);
           touch(c); save(); renderQueue();
           if (c.id === state.currentId) openConversation();
           loadCancelledByUser = false;
@@ -3768,7 +4459,10 @@
         const finish = () => { queueEditing = null; queueDraft = null; renderQueue(); drainQueue(); };
         const commit = () => {
           const v = ta.value.trim();
-          if (v) item.text = v; else queueOf(c).splice(queueOf(c).indexOf(item), 1);   // emptied means dropped
+          // Emptied means dropped, unless attachments are what the message was for: clearing the
+          // words of "look at this screenshot" should not silently throw the screenshot away.
+          if (v || (item.att || []).length) item.text = v;
+          else queueOf(c).splice(queueOf(c).indexOf(item), 1);
           touch(c); save(); finish();
         };
         ta.addEventListener("input", () => { queueDraft = ta.value; autosizeTa(ta); });
@@ -3789,7 +4483,12 @@
         return row;
       }
       row.draggable = true;
-      const txt = document.createElement("div"); txt.className = "qtext"; txt.textContent = item.text; txt.title = item.text;
+      const txt = document.createElement("div"); txt.className = "qtext";
+      // A queued message can be nothing but attachments, and a blank row would read as a bug.
+      const names = (item.att || []).map(a => a.name);
+      txt.textContent = item.text || (names.length ? names.join(", ") : "");
+      txt.title = [item.text, names.length ? "Attached: " + names.join(", ") : ""].filter(Boolean).join("\n");
+      if (!item.text && names.length) txt.classList.add("attonly");
       const acts = document.createElement("div"); acts.className = "qacts";
       const mk = (title, icon, fn) => { const b = document.createElement("button"); b.title = title; b.innerHTML = icon; b.onclick = fn; return b; };
       acts.append(
@@ -3828,6 +4527,7 @@
       openConversation();
       els.input.value = un.content; els.input.dispatchEvent(new Event("input"));
       els.input.focus(); els.input.setSelectionRange(un.content.length, un.content.length);
+      restoreDraft(un);   // the prompt came back, so its attachments do too
     }
     async function regenerate(assistantNodeId) {
       if (controller || sending) return;
@@ -3860,6 +4560,7 @@
       setLeaf(c, node.parentId); save(); openConversation();
       els.input.value = node.content; els.input.dispatchEvent(new Event("input")); els.input.focus();
       els.input.setSelectionRange(node.content.length, node.content.length);
+      restoreDraft(node);   // reverting to a message brings back what was attached to it
     }
 
     /* ============ settings form (spec-driven) ============ */
@@ -4017,6 +4718,7 @@
       $("#s_keepalive").value = resolveSetting("keepAlive", model) || "";
       $("#s_format").value = resolveSetting("format", model) || "";
       $("#s_forcethinking").checked = !!resolveSetting("forceThinking", model);
+      $("#s_imagedetail").value = imageDetailOf(model);
       $("#setModel").textContent = model || "";
       buildSettingsForm(resolveParams(model));
       autosizeTa($("#s_system"));
@@ -4076,6 +4778,7 @@
       if (ex && ex.type === "bool") return v ? "On" : "Off";   // before the blank check: false is a value, not "unset"
       if (v == null || v === "") return k === "format" ? "Text" : "not set";
       if (k === "format") return v === "json" ? "JSON" : "Text";
+      if (k === "imageDetail") return (IMAGE_BUDGETS[v] || IMAGE_BUDGETS.balanced).label;
       const s = String(v).replace(/\s+/g, " ").trim();
       return s.length > 36 ? s.slice(0, 36) + "…" : s;
     }
@@ -4218,6 +4921,7 @@
         baseUrl: normalizeBase($("#s_base").value), system: $("#s_system").value,
         keepAlive: $("#s_keepalive").value.trim(), format: $("#s_format").value,
         forceThinking: $("#s_forcethinking").checked,
+        imageDetail: $("#s_imagedetail").value,
         autoLoad: $("#s_autoload").checked, defaultModel: $("#s_defaultmodel").value,
         oneAtOnce: $("#s_oneatonce").checked, unloadOnClose: $("#s_unloadonclose").checked,
         params: readParams()
@@ -4397,7 +5101,18 @@
           const ta = document.createElement("textarea");
           ta.value = it.content;
           ta.addEventListener("input", () => { it.content = ta.value; autosizeTa(ta); if (measured) staleBadge(); });
-          msg.append(lbl, ta); box.appendChild(msg); tas.push(ta);
+          msg.append(lbl, ta);
+          /* Named but not editable. The panel edits the words of a message, and an attachment is
+             not words: a 400-line file dropped into a textarea here would bury every other turn,
+             and its text is reconstructed from storage at send time anyway. Listing them is what
+             stops the panel implying the message was only what is in the box. */
+          const recs = attOf(c.nodes[it.id] || {});
+          if (recs.length) {
+            const note = document.createElement("div"); note.className = "ctxatt";
+            note.textContent = recs.map(a => `${a.kind === "image" ? "Image" : "File"}: ${a.name}`).join(" · ");
+            msg.appendChild(note);
+          }
+          box.appendChild(msg); tas.push(ta);
         }
         const del = head.querySelector(".del");
         const sync = () => { const d = gone(); box.classList.toggle("deleted", d); del.textContent = d ? "Undo" : "Delete"; tas.forEach(ta => ta.disabled = d); badge.classList.toggle("stale", d || !measured); };
@@ -4419,7 +5134,9 @@
       let prev = parentId, last = parentId;
       for (let i = t; i < ctxState.length; i++) {
         const e = ctxState[i]; if (e.deleted) continue; const o = path[i];
-        const n = createNode(c, prev, o.role, e.content, o.thinking, (e.content !== o.content ? "" : o.meta));
+        // Attachments carry over untouched. Editing the words of a message does not change which
+        // file was attached to it, and dropping them here would quietly rewrite what the model saw.
+        const n = createNode(c, prev, o.role, e.content, o.thinking, (e.content !== o.content ? "" : o.meta), attOf(o));
         prev = n.id; last = n.id;
       }
       setLeaf(c, last); compose = null; touch(c); save(); closeContext(); openConversation();
@@ -4434,14 +5151,22 @@
     // Sending never blocks. If the model is busy the message joins this chat's queue instead of
     // being refused, and a prompt wound back by Stop goes to the front, since it was always meant
     // to run before whatever is waiting behind it.
-    function submit() {
-      const t = els.input.value.trim(); if (!t) return;
+    async function submit() {
+      const t = els.input.value.trim();
+      const atts = draftAtt;
+      if (!t && !atts.length) return;
       const c = currentConv();
       const front = !!compose;
       if (compose) { compose = null; $("#composeBar").style.display = "none"; }
+      // Cleared before the await so a second Enter cannot send the same attachments twice.
+      draftAtt = [];
       els.input.value = ""; els.input.style.height = "auto"; els.send.disabled = true;
+      renderAttachBar(); clearDraftCtx();
       cancelMeasure();   // real work now: drop any reading in flight rather than queue behind it
-      enqueue(c, t, front);
+      // Only now do the bytes reach IndexedDB. Up to this point the draft could have been
+      // abandoned, and nothing on disk should outlive a message that was never sent.
+      if (atts.length) await commitDraft(atts);
+      enqueue(c, t, front, atts.map(attDescriptor));
       resumeQueue();
       renderQueue();
       drainQueue();
@@ -4451,9 +5176,39 @@
       else if (sending) cancelLoad();
     }
     els.send.addEventListener("click", () => { isStopMode() ? requestStop() : submit(); });
+
+    /* ---- attaching ---- */
+    els.attachBtn.addEventListener("click", () => els.fileInput.click());
+    // Reset after reading, or picking the same file twice in a row fires no change event.
+    els.fileInput.addEventListener("change", e => { const f = e.target.files; els.fileInput.value = ""; addFiles(f); });
+    // A screenshot on the clipboard is the commonest way an image gets attached, and it arrives
+    // as files on the paste event. Text pastes are left entirely alone.
+    els.input.addEventListener("paste", e => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length) { e.preventDefault(); addFiles(files); }
+    });
+    /* Drag tracking is on the window rather than the composer, because a drag that leaves through
+       a child element fires dragleave on the parent too and the highlight would flicker. A depth
+       counter is what tells a real exit from crossing an internal boundary. */
+    let dragDepth = 0;
+    const dragHasFiles = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files"));
+    const endDrag = () => { dragDepth = 0; els.composer.classList.remove("dragging"); };
+    addEventListener("dragenter", e => { if (!dragHasFiles(e)) return; dragDepth++; els.composer.classList.add("dragging"); });
+    addEventListener("dragover", e => { if (dragHasFiles(e)) e.preventDefault(); });   // or the drop never fires
+    addEventListener("dragleave", e => { if (!dragHasFiles(e)) return; if (--dragDepth <= 0) endDrag(); });
+    addEventListener("drop", e => {
+      if (!dragHasFiles(e)) return;
+      e.preventDefault(); endDrag();
+      addFiles(e.dataTransfer.files);
+    });
+
     // Leaves any in-flight reply running, same as switching to an existing chat.
     els.newChat.addEventListener("click", () => { newConversation(); openConversation(); els.input.focus(); });
     els.model.addEventListener("change", () => {
+      const c0 = currentConv();
+      // Checked before anything is committed, because undoing a model switch afterwards means
+      // unpicking the load, the settings panel and the ring as well.
+      if (!visionSwitchAllowed(c0, els.model.value)) { els.model.value = c0.model; return; }
       if (loadingName && loadingName !== els.model.value) cancelLoad();
       const c = currentConv(); c.model = els.model.value; state.settings.model = els.model.value; save();
       updateCap(); updateLoadUI(); updateCtxRing();
@@ -4783,6 +5538,9 @@
         const justEnabled = await firstRunPrompt();
         if (fresh || justEnabled) autoLoadOnOpen();   // saying yes should load now, not next time
       })();
+      // Attachment rows whose chat or branch was deleted in a session that never got to clean up
+      // after itself. Last, and never awaited: nothing on screen depends on it.
+      attachGC();
 
       setInterval(() => {
         checkDayChange();
