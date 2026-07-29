@@ -661,7 +661,7 @@ const OPTION_SPEC = [
 const SPEC_ITEMS = OPTION_SPEC.flatMap(g=>g.items);
 const SPEC_BY_KEY = Object.fromEntries(SPEC_ITEMS.map(it=>[it.k,it]));
 // Options that are baked in at model-load time. Changing them requires a reload to take effect.
-const LOAD_TIME_KEYS = ["num_ctx","num_batch","num_keep","num_gpu","main_gpu","num_thread","use_mmap","use_mlock","low_vram","numa"];
+const LOAD_TIME_KEYS = ["keepAlive","num_ctx","num_batch","num_keep","num_gpu","main_gpu","num_thread","use_mmap","use_mlock","low_vram","numa"];
 function defaultParams(){ const p={}; for(const it of SPEC_ITEMS) p[it.k] = (it.def===undefined?null:it.def); return p; }
 
 /* ---- scopable settings ----
@@ -2387,6 +2387,12 @@ async function closeSettings(){
   // the next close goes straight through.
   if(choice==="cancel"||choice==null){ fillSettingsForm(); return; }
   commitRows(rows,model); doClose(); updateCtxRing(); syncLauncher();
+  // If the default model was changed, switch the current chat's model picker to it
+  const newDefault=state.settings.defaultModel;
+  if(newDefault && newDefault!==model){
+    const c=currentConv();
+    if(c && !pathOf(c).length){ c.model=newDefault; state.settings.model=newDefault; els.model.value=newDefault; save(); updateCap(); updateLoadUI(); }
+  }
   await loadModels();
   await enforceOneAtOnce();
   if(choice==="reload") await loadModel(els.model.value);     // apply load-time options immediately
@@ -2785,27 +2791,67 @@ function applyDefaultModel(c){
 }
 // Asked on the first boot that finds any model installed, and again after a factory reset,
 // which clears the answer. Either reply records that the question was put, so it never nags.
-// Returns true when it has just switched loading on, so the caller can honour that straight
-// away rather than leaving it until the next fresh open.
+// Does NOT touch autoLoad — that stays off and is only toggled manually in Settings.
 async function firstRunPrompt(){
   const s=state.settings;
   if(s.autoLoadPrompted || !modelCache.length) return false;
   let pick=(installedModel(s.defaultModel) ? s.defaultModel : modelCache[0].name);
-  const choice=await dialog("Load a model automatically?","",
-    [{label:"Not now",value:"no",cancel:true},{label:"Set",value:"yes",primary:true}],
+  let ctxVal=Number(s.params.num_ctx)||DEFAULT_NUM_CTX;
+  const choice=await dialog("Pick a default model","",
+    [{label:"Set Default",value:"yes",cancel:true,primary:true}],
     { build(box){
         const p=document.createElement("p");
-        p.textContent="Pick the model to load whenever you open the app. New chats will start on it too. You can change this any time in Settings.";
-        p.style.margin="0 0 14px";
+        p.textContent="Choose which model new chats start with. You can change this any time in Settings.";
+        p.style.cssText="margin:0 0 14px;color:var(--muted);font-size:13px";
+        // ---- model picker ----
         const sel=document.createElement("select");
         sel.innerHTML=modelCache.map(m=>`<option value="${escAttr(m.name)}">${esc(m.name)}</option>`).join("");
-        sel.value=pick; sel.addEventListener("change",()=>{ pick=sel.value; });
-        box.append(p,sel);
+        sel.value=pick; sel.addEventListener("change",()=>{ pick=sel.value; rebuildChips(); });
+        // ---- context size ----
+        const ctxLabel=document.createElement("label");
+        ctxLabel.style.cssText="display:block;margin:16px 0 6px;font-weight:600;font-size:13px";
+        ctxLabel.textContent="Default context size";
+        const tipSpan=document.createElement("span");
+        tipSpan.className="help";
+        tipSpan.dataset.tip="If a model\u2019s max supported context is smaller than this value, the model\u2019s max will be used instead.";
+        tipSpan.textContent="?";
+        ctxLabel.appendChild(tipSpan);
+        const ctxHint=document.createElement("p");
+        ctxHint.textContent="How many tokens the model sees at once. Larger values use more RAM/VRAM.";
+        ctxHint.style.cssText="margin:0 0 8px;color:var(--muted);font-size:12px";
+        const ctxInput=document.createElement("input");
+        ctxInput.type="number"; ctxInput.step="256"; ctxInput.min="256";
+        ctxInput.value=ctxVal; ctxInput.style.cssText="width:100%;margin-bottom:8px";
+        ctxInput.addEventListener("input",()=>{ ctxVal=Number(ctxInput.value)||DEFAULT_NUM_CTX; markActive(); });
+        const chipRow=document.createElement("div");
+        chipRow.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
+        const markActive=()=>chipRow.querySelectorAll(".chip").forEach(c=>c.classList.toggle("on",Number(c.dataset.ctx)===ctxVal));
+        function rebuildChips(){
+          chipRow.innerHTML="";
+          const max=modelMaxCtxFor(pick);
+          const base=[2048,4096,8192,16384,32768,65536,131072];
+          const presets=max ? base.filter(p=>p<=max) : [...base];
+          if(max && !presets.includes(max)) presets.push(max);
+          presets.forEach(p=>{
+            const btn=document.createElement("button");
+            btn.type="button"; btn.className="chip"; btn.dataset.ctx=p;
+            btn.textContent=(max && p===max ? "Max · " : "")+(p>=1024?(p/1024)+"K":String(p));
+            btn.onclick=()=>{ ctxInput.value=p; ctxVal=p; markActive(); };
+            chipRow.appendChild(btn);
+          });
+          markActive();
+        }
+        rebuildChips();
+        box.append(p,sel,ctxLabel,ctxHint,ctxInput,chipRow);
       } });
   s.autoLoadPrompted=true;
-  if(choice==="yes"){ s.autoLoad=true; s.defaultModel=pick; }
+  s.defaultModel=pick;
+  s.params.num_ctx=ctxVal;
   save();
-  return choice==="yes";
+  // Apply to the current chat so the model picker reflects the choice immediately
+  const c=currentConv();
+  if(c){ c.model=pick; s.model=pick; els.model.value=pick; save(); updateCap(); updateLoadUI(); }
+  return false;   // never triggers auto-load
 }
 async function autoLoadOnOpen(){
   const s=state.settings;
