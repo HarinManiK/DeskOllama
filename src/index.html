@@ -1277,8 +1277,10 @@ async function loadModel(name){
   })();
   loadPromise=p; return p;
 }
+let loadCancelledByUser = false;
 function cancelLoad(){
   if(!loadAbort && !loadingName) return;
+  loadCancelledByUser = true;
   const cancelledName = loadingName;
   if(loadAbort){
     try{ loadAbort.abort(); }catch(e){}
@@ -1851,11 +1853,24 @@ async function drainQueue(){
       const un=addNode(c, c.leafId, "user", item.text);
       touch(c); save(); renderQueue();
       if(c.id===state.currentId) openConversation();
+      loadCancelledByUser = false;
       const ok=await awaitLoad(c);
       if(!ok){
-        // Undo the post and put it back at the head, so a failed load leaves the message
-        // pending rather than stranded under a chat with no reply coming.
+        // Undo the post
         delete c.nodes[un.id]; setLeaf(c, un.parentId);
+        if(loadCancelledByUser){
+          loadCancelledByUser=false;
+          queueHalted=false; queueHaltMsg="";
+          if(c.id===state.currentId){
+            els.input.value=item.text;
+            els.input.dispatchEvent(new Event("input"));
+            els.input.focus();
+            els.input.setSelectionRange(item.text.length, item.text.length);
+          }
+          save();
+          if(c.id===state.currentId) openConversation(); else renderQueue();
+          break;
+        }
         queueOf(c).unshift(item); halt("The model could not be loaded."); save();
         if(c.id===state.currentId) openConversation(); else renderQueue();
         break;
