@@ -2257,8 +2257,10 @@ function changedRows(rows){ return rows.filter(r=>r.changed); }
 
 // Renders one changed setting. An edit row shows old -> new plus a scope capsule, and flipping
 // the capsule mutates `row.scope` in place and refreshes the consequence note. A `bare` row
+// Renders one changed setting. An edit row shows old -> new plus a scope capsule, and flipping
+// the capsule mutates `row.scope` in place and refreshes the consequence note. A `bare` row
 // (a reset) shows only the value it lands on.
-function reviewRow(row){
+function reviewRow(row, modelName){
   const el=document.createElement("div"); el.className="rev-row";
   const lbl=document.createElement("div"); lbl.className="rl"; lbl.textContent=labelOf(row.key);
   const val=document.createElement("div"); val.className="rv";
@@ -2271,10 +2273,11 @@ function reviewRow(row){
   if(row.bare) return item;
 
   const locked = GLOBAL_ONLY_KEYS.includes(row.key);
+  const targetModel = (modelName && modelName !== "App") ? modelName : (els.model.value || "This model");
   const cap=document.createElement("div"); cap.className="scap"+(locked?" locked":"");
   cap.innerHTML=locked
-    ? `<button type="button" class="on">Global</button>`
-    : `<button type="button" data-s="global">Global</button><button type="button" data-s="model">This model</button>`;
+    ? `<button type="button" class="on">Every model</button>`
+    : `<button type="button" data-s="global">Every model</button><button type="button" data-s="model">${esc(targetModel)}</button>`;
   el.appendChild(cap);
 
   const note=document.createElement("div"); note.className="rev-note";
@@ -2299,7 +2302,7 @@ const CANCEL_BTN={label:"Cancel",value:"cancel",cancel:true};
 function reviewDialog(rows,model){
   const changed=changedRows(rows);
   const build=box=>{
-    changed.forEach(r=>box.appendChild(reviewRow(r)));
+    changed.forEach(r=>box.appendChild(reviewRow(r,model)));
     if(!modelCache.length){
       const p=document.createElement("p"); p.className="rev-note warn"; p.style.display="block";
       p.textContent="Model list unavailable. Per-model limits could not be verified.";
@@ -2317,7 +2320,7 @@ function resetDialog(plan,selfRows){
   const build=box=>{
     const n=modelCache.length;
     const warn=document.createElement("p"); warn.className="rev-note warn"; warn.style.display="block";
-    warn.textContent=`Restores defaults across ${n?`all ${n} model${n===1?"":"s"}`:"every model"} and the built-in Global / Per-model classification. The Ollama base URL, your saved prompts and your conversations are kept.`;
+    warn.textContent=`Restores defaults across ${n?`all ${n} model${n===1?"":"s"}`:"every model"} and the built-in Every model / Per-model classification. The Ollama base URL, your saved prompts and your conversations are kept.`;
     box.appendChild(warn);
     if(!plan.length){
       const p=document.createElement("p"); p.className="rev-note"; p.style.display="block";
@@ -2327,7 +2330,7 @@ function resetDialog(plan,selfRows){
     for(const g of plan){
       const h=document.createElement("p"); h.className="rev-group"; h.textContent=g.model;
       box.appendChild(h);
-      g.rows.forEach(r=>box.appendChild(reviewRow(r)));
+      g.rows.forEach(r=>box.appendChild(reviewRow(r,g.model)));
     }
   };
   const buttons = needsReloadChoice(selfRows)
