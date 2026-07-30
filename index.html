@@ -4133,7 +4133,12 @@
       if (scale < 1) {
         ow = Math.max(1, Math.round(w * scale)); oh = Math.max(1, Math.round(h * scale));
         let src = bmp, sw = w, sh = h;
-        while (sw > ow * 2 && sh > oh * 2) {
+        /* `||`, not `&&`: on an extreme aspect ratio one side reaches its target long before the
+           other, and stopping then would leave the remaining side to take the whole reduction in a
+           single aliased jump. Each side is clamped at its own target, so a side that has arrived
+           simply stops moving while the other keeps halving. That also makes the loop terminate:
+           every iteration strictly decreases at least one side until neither exceeds twice target. */
+        while (sw > ow * 2 || sh > oh * 2) {
           sw = Math.max(ow, Math.floor(sw / 2)); sh = Math.max(oh, Math.floor(sh / 2));
           src = drawScaled(src, sw, sh);
         }
