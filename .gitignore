@@ -1,5 +1,7 @@
 node_modules/
 src-tauri/target/
+src-tauri/gen/
+.claude/
 __pycache__/
 harness.log
 *.log
