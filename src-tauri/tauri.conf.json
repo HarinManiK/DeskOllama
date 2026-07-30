@@ -15,6 +15,7 @@
         "height": 780,
         "resizable": true,
         "fullscreen": false,
+        "dragDropEnabled": false,
         "theme": "Dark",
         "backgroundColor": [33, 33, 33, 255]
       }
