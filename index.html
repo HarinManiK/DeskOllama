@@ -1176,6 +1176,19 @@
       display: flex
     }
 
+    #attachNote {
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 11.5px;
+      color: var(--muted);
+      line-height: 1.4
+    }
+
+    #attachNote.on {
+      display: flex
+    }
+
     .achip {
       display: inline-flex;
       align-items: center;
@@ -2483,6 +2496,7 @@
           id="composeCancel">Cancel</button></div>
       <div class="composer" id="composer">
         <div id="attachBar"></div>
+        <div id="attachNote"></div>
         <textarea id="input" rows="1" placeholder="Message your model…"></textarea>
         <div class="composer-foot">
           <div class="composer-left">
@@ -2566,15 +2580,14 @@
       </div>
       <div class="set-group">
         <p class="gh">Images</p>
-        <p class="gnote">Attached images are scaled to fit a pixel budget before they are sent. Resolution is what
-          decides how much of the context window an image takes, so a smaller budget costs fewer tokens.</p>
-        <div class="field"><label>Image detail<span class="help"
-              data-tip="How much of an attached image is sent to the model.&#10;&#10;Balanced (~1.15 MP): about 1,100 tokens. Right for photos, screenshots and diagrams, and what Claude and Gemini use.&#10;Detailed (~2 MP): about 2,000 tokens. Better on document scans and dense spreadsheets, where small text has to stay legible.&#10;Full resolution: the image as-is. Reads the finest print, and a large photo can cost over 10,000 tokens.&#10;&#10;Images are never enlarged, and a model's own published limit always wins.">?</span></label><select
-            id="s_imagedetail">
-            <option value="balanced">Balanced (~1.15 MP)</option>
-            <option value="detailed">Detailed (~2 MP)</option>
-            <option value="full">Full resolution</option>
-          </select></div>
+        <p class="gnote">An attached image is scaled to fit this many megapixels before it is sent. More pixels means
+          finer detail survives, and how that translates into tokens depends entirely on the model.</p>
+        <div class="field"><label>Image detail (megapixels)<span class="help"
+              data-tip="How much of an attached image reaches the model.&#10;&#10;1.2 MP is the default and is where the frontier products settled. It keeps the 14px text in a 1080p screenshot legible, which is the demanding case: a screenshot is already 1:1, while a scanned page has detail to spare.&#10;&#10;Lower saves tokens on models that charge by resolution, and is fine for photographs and diagrams. Higher helps with small print and dense tables.&#10;&#10;0 sends the image untouched. Blank uses the default.&#10;Images are never enlarged, and a model's own published limit always wins.">?</span></label><input
+            type="number" id="s_imagedetail" step="0.1" min="0" placeholder="1.2">
+          <div class="presets" id="imgPresets"></div>
+          <div class="hint" id="imgHint"></div>
+        </div>
       </div>
       <div id="paramFields"></div>
       <div class="set-group">
@@ -2752,6 +2765,18 @@
     // Single source of truth for the context default. Referenced by the spec, the storage
     // backfill, the ctx ring and the settings form so the fallbacks can never drift apart.
     const DEFAULT_NUM_CTX = 4096;
+    /* How many pixels of an attached image are sent, by area. Same role for images that
+       DEFAULT_NUM_CTX plays for text: one source of truth for the setting, the storage migration
+       and the settings form.
+
+       ~1.2 MP is where the frontier products converged, and the reason is about pixels rather
+       than tokens, so it holds whatever architecture the model uses. Screenshots are the
+       demanding case, not documents: a screenshot is already 1:1 and its 14px text has no
+       redundancy to spend, while a 300dpi scan carries roughly 4x. At this budget a 1920x1080
+       screenshot scales by 0.76 and its 14px text lands near 11px, which survives. At half this
+       it lands near 7px, where models start guessing characters, and that failure reads as the
+       model being stupid rather than the setting being wrong. */
+    const DEFAULT_IMAGE_PIXELS = 1200000;
     const OPTION_SPEC = [
       {
         group: "Context length", items: [
@@ -2850,8 +2875,9 @@
       // setting, so it is deliberately absent from EXTRA_SETTINGS.
       autoLoad: false, defaultModel: "", oneAtOnce: true, unloadOnClose: true, autoLoadPrompted: false,
       forceThinking: false,
-      // How much of an attached image is actually sent. See IMAGE_BUDGETS.
-      imageDetail: "balanced"
+      // Pixels of an attached image actually sent, by area. 0 means send it untouched; blank or
+      // null falls back to DEFAULT_IMAGE_PIXELS. Stored in pixels, entered in megapixels.
+      imageDetail: DEFAULT_IMAGE_PIXELS
     };
     function durToSeconds(s) { const m = /^(-?\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)?$/.exec(String(s).trim()); if (!m) return null; const mult = { ns: 1e-9, us: 1e-6, "µs": 1e-6, ms: 1e-3, s: 1, m: 60, h: 3600 }[m[2] || "s"]; return Math.round(parseFloat(m[1]) * mult); }
 
@@ -2888,6 +2914,13 @@
           if (v3.settings.system === RETIRED_DEFAULT_SYSTEM) v3.settings.system = "";
           const ka = v3.settings.keepAlive;                                  // migrate old "5m"/"1h" → seconds
           if (typeof ka === "string" && ka.trim() !== "" && !/^-?\d+$/.test(ka.trim())) { const sec = durToSeconds(ka); v3.settings.keepAlive = sec == null ? "300" : String(sec); }
+          // imageDetail was three named tiers before it became a pixel budget. The per-model layer
+          // is migrated too, or an override written under the old scheme would survive as a string
+          // and resolve to the default for that model alone, silently.
+          const IMG_TIERS = { balanced: DEFAULT_IMAGE_PIXELS, detailed: 2000000, full: 0 };
+          const migrateImg = o => { if (o && typeof o.imageDetail === "string") o.imageDetail = IMG_TIERS[o.imageDetail] ?? DEFAULT_IMAGE_PIXELS; };
+          migrateImg(v3.settings);
+          for (const over of Object.values(v3.settings.modelParams)) migrateImg(over);
           v3.currentId = sessionGet("currentId");   // per-tab now, not whatever the blob last held
           return v3;
         }
@@ -3109,10 +3142,15 @@
       composer: $("#composer"), attachBar: $("#attachBar"), attachBtn: $("#attachBtn"), fileInput: $("#fileInput"),
     };
 
-    /* What the composer is holding but has not sent. Declared up here rather than beside the rest
-       of the attachment code because the ring and the send button both read it and both are
-       defined earlier in this file. See the attachments section for what a record contains. */
+    /* What the composer is holding but has not sent, and what it was measured to cost. Declared up
+       here rather than beside the rest of the attachment code because the ring, the send button
+       and the attach note all read it, and all three are defined earlier in this file. See the
+       attachments section for what a record contains, and the measurement section for how
+       draftCtx and draftAdds are filled. */
     let draftAtt = [];
+    let draftCtx = 0;        // measured total for path + draft
+    let draftCtxKey = "";    // which exact draft that total belongs to
+    let draftAdds = 0;       // measured cost of the attachments alone
 
     /* ============ theme ============ */
     const ICON_SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
@@ -3174,17 +3212,25 @@
       for (const k of Object.keys(info)) if (k.endsWith(".context_length")) { const n = num(k); if (n) return n; }
       return 0;
     }
-    /* The largest image the model will take, where it says so. Vision parameters sit in
-       model_info under the architecture's own namespace exactly as context_length does, so this
-       is the same suffix scan. qwen3-vl reports `qwen35.vision.longest_edge` as a pixel AREA
-       budget (16777216 = 4096 squared), not an edge length. Gemma reports the vision capability
-       and no vision keys at all, which is why the Image detail setting cannot be replaced by
-       detection. Extracted rather than storing model_info wholesale: the blob runs to hundreds
-       of keys and this cache is written to localStorage by save(). */
-    function imgMaxFromModelInfo(info) {
+    /* Vision parameters sit in model_info under the architecture's own namespace exactly as
+       context_length does, so this is the same suffix scan.
+
+       Three are worth keeping. `longest_edge` is the largest image the model will take, reported
+       as a pixel AREA rather than an edge length (qwen3-vl says 16777216, which is 4096 squared).
+       `patch_size` and `spatial_merge_size` are what make a token estimate possible at all, and
+       only for a ViT that consumes the image as given.
+
+       All three are absent on a fixed-input model: gemma reports the vision capability and no
+       vision keys whatsoever. That is not a gap to paper over. Such a model resizes to its own
+       fixed resolution, so its cost does not vary with what we send, and there is nothing here to
+       estimate. It is also why the Image detail setting cannot be replaced by detection.
+
+       Extracted rather than storing model_info wholesale: the blob runs to hundreds of keys and
+       this cache is written to localStorage by save(). */
+    function visionParam(info, suffix) {
       if (!info) return 0;
       for (const k of Object.keys(info)) {
-        if (!k.endsWith(".vision.longest_edge")) continue;
+        if (!k.endsWith(suffix)) continue;
         const n = Number(info[k]);
         if (Number.isFinite(n) && n > 0) return n;
       }
@@ -3197,7 +3243,9 @@
         capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
         details: (d && d.details) || {},
         ctx: ctxFromModelInfo(d && d.model_info, ((d && d.details) || {}).family),
-        imgMax: imgMaxFromModelInfo(d && d.model_info)
+        imgMax: visionParam(d && d.model_info, ".vision.longest_edge"),
+        imgPatch: visionParam(d && d.model_info, ".vision.patch_size"),
+        imgMerge: visionParam(d && d.model_info, ".vision.spatial_merge_size")
       };
     }
     // Folds a stored entry onto the live /api/tags entry, in place, so every existing reader
@@ -3257,7 +3305,7 @@
     // Background fill for models the registry has never seen. Never awaited by boot.
     async function sweepRegistry(stale) {
       if (!stale.length) return;
-      const refresh = name => { if (name === els.model.value) { updateCap(); updateCtxRing(); } };
+      const refresh = name => { if (name === els.model.value) { updateCap(); updateCtxRing(); if (els.settings.classList.contains("open")) renderImagePresets(); } };
       const sel = els.model.value;
       // The selected model drives what is on screen, so it goes first and on its own.
       if (stale.includes(sel)) { await enrichModel(sel); refresh(sel); }
@@ -4019,20 +4067,38 @@
        Balanced does not carry is small print and dense tables, which is what Detailed and Full
        are for. Below Balanced the screenshot case is the first to break: at 0.6 MP that same
        14px text is down to ~7px. */
-    const IMAGE_BUDGETS = {
-      balanced: { label: "Balanced (~1.15 MP)", pixels: 1150000 },
-      detailed: { label: "Detailed (~2 MP)", pixels: 2000000 },
-      full: { label: "Full resolution", pixels: Infinity },
-    };
-    function imageDetailOf(model) {
+    const MP = 1e6;
+    // Offered on the settings chips. Labelled in megapixels only: what this controls is pixels,
+    // and the relationship between pixels and tokens is different for every architecture.
+    const IMAGE_PRESET_MP = [0.3, 0.6, 1.2, 2, 4];
+    const modelImgMax = m => Number((metaAll()[m] || {}).imgMax) || 0;
+    // Blank means the default; 0 means the original, untouched. Anything else is a pixel count.
+    function imageBudgetSetting(model) {
       const v = resolveSetting("imageDetail", model);
-      return IMAGE_BUDGETS[v] ? v : "balanced";
+      if (v === 0) return 0;
+      const n = Number(v);
+      return (v == null || v === "" || !Number.isFinite(n) || n < 0) ? DEFAULT_IMAGE_PIXELS : n;
     }
     function imageBudgetFor(model) {
-      const want = IMAGE_BUDGETS[imageDetailOf(model)].pixels;
-      const meta = metaAll()[model];
-      const cap = Number(meta && meta.imgMax) || 0;   // harvested by metaFromShow
-      return cap > 0 ? Math.min(want, cap) : want;    // the model's published limit always wins
+      const want = imageBudgetSetting(model);
+      const cap = modelImgMax(model);              // harvested by metaFromShow
+      if (!want) return cap > 0 ? cap : 0;         // Original still yields to a published ceiling
+      return cap > 0 ? Math.min(want, cap) : want; // and always beats a larger setting
+    }
+    /* What `pixels` would cost on this model, for the settings hint alone — the one place a
+       number is needed before any image exists to measure.
+
+       Only meaningful for a ViT that consumes patches of the image as given, where the count is
+       (w/patch/merge) * (h/patch/merge). Models with a fixed input size publish no such keys and
+       their cost does not vary with what we send at all, so they correctly fall through to 0 and
+       the hint is omitted. Returning 0 rather than a guess is the point: there is no formula that
+       holds across architectures, and inventing one would be worse than saying nothing. */
+    function estimateVisualTokens(model, pixels) {
+      const m = metaAll()[model] || {};
+      const patch = Number(m.imgPatch) || 0;
+      const merge = Number(m.imgMerge) || 1;
+      if (!patch || !pixels) return 0;
+      return Math.round(pixels / (patch * patch * merge * merge));
     }
     const loadBitmap = blob => (typeof createImageBitmap === "function"
       ? createImageBitmap(blob)
@@ -4040,19 +4106,41 @@
     /* Scales `blob` down to fit `budget` pixels of area and returns raw base64 plus the
        dimensions actually sent. Never enlarges, and skips re-encoding entirely when the image
        already fits, so an in-budget PNG reaches the model byte-identical. */
+    // One reduction step. Kept separate so the halving loop and the final pass cannot drift apart.
+    function drawScaled(src, w, h) {
+      const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+      const cx = cv.getContext("2d");
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
+      cx.drawImage(src, 0, 0, w, h);
+      return cv;
+    }
+    /* Scales `blob` down to fit `budget` pixels of area. A budget of 0 means send it untouched.
+       Returns raw base64 plus the dimensions actually sent; never enlarges, and skips re-encoding
+       entirely when the image already fits, so an in-budget PNG reaches the model byte-identical.
+
+       The reduction is done in halving steps rather than one jump. A single drawImage past about
+       3x aliases badly however high imageSmoothingQuality is set, because the filter samples too
+       few source pixels per destination pixel: fine text turns to mush and regular patterns like
+       table rules and UI chrome moire. Halving keeps every step inside the range browsers filter
+       properly. It costs a few canvases and nothing at all in tokens, which is the whole point:
+       the pixels sent are identical in number and simply sharper. */
     async function fitImage(blob, budget) {
       let w = 0, h = 0, bmp = null;
       try { bmp = await loadBitmap(blob); w = bmp.width; h = bmp.height; } catch { return null; }
       const area = w * h;
-      const scale = (budget === Infinity || area <= budget) ? 1 : Math.sqrt(budget / area);
+      const scale = (!budget || area <= budget) ? 1 : Math.sqrt(budget / area);
       let out = blob, ow = w, oh = h;
       if (scale < 1) {
         ow = Math.max(1, Math.round(w * scale)); oh = Math.max(1, Math.round(h * scale));
-        const cv = document.createElement("canvas"); cv.width = ow; cv.height = oh;
-        const cx = cv.getContext("2d"); cx.imageSmoothingQuality = "high";
-        cx.drawImage(bmp, 0, 0, ow, oh);
-        // PNG for anything that might carry alpha, so a transparent screenshot is not
-        // flattened onto black; JPEG elsewhere, where it is far smaller at the same quality.
+        let src = bmp, sw = w, sh = h;
+        while (sw > ow * 2 && sh > oh * 2) {
+          sw = Math.max(ow, Math.floor(sw / 2)); sh = Math.max(oh, Math.floor(sh / 2));
+          src = drawScaled(src, sw, sh);
+        }
+        const cv = drawScaled(src, ow, oh);
+        // PNG for anything that might carry alpha, so a transparent screenshot is not flattened
+        // onto black, and because JPEG ringing lands hardest on exactly the small text a
+        // screenshot is attached for. JPEG elsewhere, where it is far smaller at equal quality.
         const keepAlpha = /png|webp|gif/i.test(blob.type || "");
         out = await new Promise(r => cv.toBlob(r, keepAlpha ? "image/png" : "image/jpeg", 0.9)) || blob;
       }
@@ -4242,6 +4330,27 @@
       draftAtt = attRecords(node).filter(r => typeof r.send === "string").map(r => ({ ...r }));
       renderAttachBar(); syncSendButton(); measureDraft();
     }
+    /* Two things worth saying about a draft, both quiet and neither blocking.
+
+       The cost line is the measured figure from measureCtx, not a prediction, and it is one
+       number for the whole draft: prompt_eval_count answers for a payload, so isolating each file
+       would take a separate request each. It is absent until a reading lands, which needs a model
+       resident, and absent afterwards if none ever does.
+
+       The caution is guidance rather than a limit. Most vision models attend well to one image
+       and acceptably to two; past that they start averaging over them. Worth saying once, not
+       worth refusing over. */
+    function renderAttachNote() {
+      const el = $("#attachNote"); if (!el) return;
+      const lines = [];
+      if (draftAtt.length) {
+        if (draftAdds > 0) lines.push(`Attachments add ≈${draftAdds.toLocaleString()} tokens`);
+        if (draftAtt.filter(a => a.kind === "image").length > 2) lines.push("Most vision models attend well to one or two images.");
+      }
+      el.innerHTML = "";
+      for (const t of lines) { const s = document.createElement("span"); s.textContent = t; el.appendChild(s); }
+      el.classList.toggle("on", lines.length > 0);
+    }
     function renderAttachBar() {
       const bar = els.attachBar; if (!bar) return;
       releaseUrls("draft");
@@ -4265,6 +4374,7 @@
         chip.appendChild(x);
         bar.appendChild(chip);
       }
+      renderAttachNote();
     }
     /* ============ context measurement ============
        The request body for a chat turn, shared with measureCtx() so a reading can never drift
@@ -4332,9 +4442,8 @@
     /* What a pending draft costs, and which draft that figure belongs to. Kept out of the node
        tree deliberately: nothing has been sent, so there is nothing to record it against, and it
        has to evaporate the moment the composer changes rather than linger as a stale number. */
-    let draftCtx = 0, draftCtxKey = "";
     const draftKey = c => draftAtt.length ? `${c.id}|${c.model}|${draftAtt.map(a => a.id).join(",")}|${els.input.value.trim().length}` : "";
-    function clearDraftCtx() { draftCtx = 0; draftCtxKey = ""; }
+    function clearDraftCtx() { draftCtx = 0; draftCtxKey = ""; draftAdds = 0; renderAttachNote(); }
     // The node a reading would describe. The path has to END at the reply being measured, or the
     // message list would include a pending user turn and the number would belong to nothing.
     // A draft is the exception: it IS a pending user turn, and pricing it is the point.
@@ -4386,7 +4495,14 @@
           const key = draftKey(c);
           if (!key) return;
           draftCtx = n; draftCtxKey = key;
-          updateCtxRing();
+          /* What the attachments themselves cost: the measured total minus what the branch held
+             without them. Measured rather than derived, which is the only way to get a true number
+             across architectures — a dynamic-resolution ViT prices by area, a tiling model by tile
+             count, and a fixed-input model charges the same however many pixels it is handed.
+             pathUsage is the floor here, so this can read slightly high on a branch whose last
+             reply was never measured; it is marked approximate for that reason. */
+          draftAdds = Math.max(0, n - pathUsage(c).used);
+          updateCtxRing(); renderAttachNote();
           return;                                  // nothing sent, so nothing to persist
         }
         if (!c.nodes[node.id]) return;             // the branch went away while we were asking
@@ -4854,6 +4970,60 @@
       if (at >= 0) list[at] = { ...list[at], name, text }; else list.push({ id: uid(), name, text });
       save(); renderPromptChips();
     }
+    /* ---- the image budget control ----
+       Stored in pixels, entered in megapixels, so both directions go through one pair of helpers
+       and a rounding rule cannot drift between them. */
+    function mpText(px) {
+      const mp = Number(px) / MP;
+      if (!Number.isFinite(mp)) return "";
+      return String(Math.round(mp * 100) / 100);   // 1200000 -> "1.2", never "1.2000000000000002"
+    }
+    function readImageBudget() {
+      const raw = $("#s_imagedetail").value.trim();
+      if (raw === "") return null;                 // blank means the default
+      const mp = Number(raw);
+      if (!Number.isFinite(mp) || mp < 0) return null;
+      return Math.round(mp * MP);                  // 0 stays 0, which means the original
+    }
+    function renderImagePresets() {
+      const wrap = $("#imgPresets"); if (!wrap) return;
+      const model = els.model.value, cap = modelImgMax(model);
+      // A preset above the model's own ceiling would be clamped back down on use, so it is not
+      // offered. Same reasoning as the ctx chips, which drop presets above the trained window.
+      const chips = IMAGE_PRESET_MP.filter(mp => !cap || mp * MP < cap)
+        .map(mp => `<button type="button" class="chip" data-mp="${mp}">${mp} MP</button>`);
+      if (cap) chips.push(`<button type="button" class="chip" data-mp="${mpText(cap)}">Max · ${mpText(cap)} MP</button>`);
+      chips.push(`<button type="button" class="chip" data-mp="0">Original</button>`);
+      wrap.innerHTML = chips.join("");
+      const input = $("#s_imagedetail");
+      wrap.querySelectorAll(".chip[data-mp]").forEach(b => b.onclick = () => { input.value = b.dataset.mp; markImageChips(); updateImageHint(); });
+      markImageChips(); updateImageHint();
+    }
+    function markImageChips() {
+      const v = $("#s_imagedetail").value.trim();
+      $("#imgPresets").querySelectorAll(".chip[data-mp]").forEach(c => c.classList.toggle("on", c.dataset.mp === v));
+    }
+    /* The only number in the app that is predicted rather than measured, because at settings time
+       there is no image to measure. Named for the model it was computed for, and simply absent
+       when that model publishes nothing to compute from: there is no cross-architecture formula,
+       and a number carried from one model to another would be worse than no number. */
+    function updateImageHint() {
+      const el = $("#imgHint"); if (!el) return;
+      const model = els.model.value, raw = $("#s_imagedetail").value.trim();
+      const px = raw === "" ? DEFAULT_IMAGE_PIXELS : Math.round(Number(raw) * MP);
+      const cap = modelImgMax(model);
+      let msg = "";
+      if (!Number.isFinite(px) || px < 0) msg = "";
+      else if (px === 0) msg = cap ? `Sent untouched, up to ${model}'s limit of ${mpText(cap)} MP.` : "Sent untouched, at whatever size it already is.";
+      else {
+        const shown = cap && px > cap ? cap : px;
+        const over = cap && px > cap ? ` (${model} caps at ${mpText(cap)} MP)` : "";
+        const tok = estimateVisualTokens(model, shown);
+        msg = tok ? `≈${tok.toLocaleString()} visual tokens for ${model}${over}` : (over ? over.trim().replace(/^\(|\)$/g, "") : "");
+      }
+      el.textContent = msg;
+      el.style.display = msg ? "" : "none";
+    }
     function fillSettingsForm() {
       const s = state.settings, model = els.model.value;
       $("#s_base").value = s.baseUrl;
@@ -4865,7 +5035,9 @@
       $("#s_keepalive").value = resolveSetting("keepAlive", model) || "";
       $("#s_format").value = resolveSetting("format", model) || "";
       $("#s_forcethinking").checked = !!resolveSetting("forceThinking", model);
-      $("#s_imagedetail").value = imageDetailOf(model);
+      const imgPx = resolveSetting("imageDetail", model);
+      $("#s_imagedetail").value = (imgPx == null || imgPx === "") ? "" : mpText(imgPx);
+      renderImagePresets();
       $("#setModel").textContent = model || "";
       buildSettingsForm(resolveParams(model));
       autosizeTa($("#s_system"));
@@ -4923,9 +5095,13 @@
       }
       const ex = EXTRA_BY_KEY[k];
       if (ex && ex.type === "bool") return v ? "On" : "Off";   // before the blank check: false is a value, not "unset"
+      // Ahead of the blank check for the same reason: 0 is "send the original", not "unset".
+      if (k === "imageDetail") {
+        if (v == null || v === "") return `Default · ${mpText(DEFAULT_IMAGE_PIXELS)} MP`;
+        return Number(v) === 0 ? "Original" : `${mpText(v)} MP`;
+      }
       if (v == null || v === "") return k === "format" ? "Text" : "not set";
       if (k === "format") return v === "json" ? "JSON" : "Text";
-      if (k === "imageDetail") return (IMAGE_BUDGETS[v] || IMAGE_BUDGETS.balanced).label;
       const s = String(v).replace(/\s+/g, " ").trim();
       return s.length > 36 ? s.slice(0, 36) + "…" : s;
     }
@@ -5068,7 +5244,7 @@
         baseUrl: normalizeBase($("#s_base").value), system: $("#s_system").value,
         keepAlive: $("#s_keepalive").value.trim(), format: $("#s_format").value,
         forceThinking: $("#s_forcethinking").checked,
-        imageDetail: $("#s_imagedetail").value,
+        imageDetail: readImageBudget(),
         autoLoad: $("#s_autoload").checked, defaultModel: $("#s_defaultmodel").value,
         oneAtOnce: $("#s_oneatonce").checked, unloadOnClose: $("#s_unloadonclose").checked,
         params: readParams()
@@ -5394,7 +5570,9 @@
       // A model the registry already knows resolves without a request; only one it has never seen
       // costs a call, and the toggle settles when it lands.
       const picked = els.model.value;
-      enrichModel(picked).then(() => { if (els.model.value === picked) { updateCap(); updateCtxRing(); } });
+      // The image presets and their hint are built from the same /api/show data, so a model the
+      // registry has never seen has to redraw them when the answer lands, not just the top bar.
+      enrichModel(picked).then(() => { if (els.model.value === picked) { updateCap(); updateCtxRing(); if (els.settings.classList.contains("open")) renderImagePresets(); } });
       // The panel shows values for the selected model, so repopulate it from the new model's layer.
       if (els.settings.classList.contains("open")) fillSettingsForm();
     });
@@ -5404,6 +5582,7 @@
     $("#composeCancel").addEventListener("click", () => { if (!compose) return; cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); });
     els.collapseBtn.addEventListener("click", () => { els.sidebar.classList.add("collapsed"); els.showSidebar.style.display = ""; });
     els.showSidebar.addEventListener("click", () => { els.sidebar.classList.remove("collapsed"); els.showSidebar.style.display = "none"; });
+    $("#s_imagedetail").addEventListener("input", () => { markImageChips(); updateImageHint(); });
     $("#s_system").addEventListener("input", e => { autosizeTa(e.target); renderPromptChips(); });
     $("#addPrompt").addEventListener("click", addPromptDialog);
     els.settingsBtn.addEventListener("click", openSettings);
