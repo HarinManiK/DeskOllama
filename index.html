@@ -1193,6 +1193,21 @@
       border-color: var(--muted)
     }
 
+    /* An image chip previews from anywhere on the card, not just the thumbnail. */
+    .achip.clickable {
+      cursor: pointer;
+      transition: border-color .15s, background .15s
+    }
+
+    .achip.clickable:hover {
+      background: var(--panel);
+      border-color: var(--muted)
+    }
+
+    .achip.clickable:hover .athumb {
+      filter: brightness(1.1)
+    }
+
     .achip .athumb {
       width: 26px;
       height: 26px;
@@ -1305,7 +1320,18 @@
       border-radius: 10px;
       border: 1px solid var(--border);
       display: block;
-      cursor: zoom-in
+      cursor: pointer;
+      transition: border-color .15s, filter .15s, transform .15s
+    }
+
+    .node-img:hover {
+      border-color: var(--muted);
+      filter: brightness(1.07);
+      transform: translateY(-1px)
+    }
+
+    .node-img:active {
+      transform: translateY(0)
     }
 
     /* ---- image preview ----
@@ -3311,6 +3337,15 @@
        only ever add to the prefix it was measured on. */
     function pathUsage(c) {
       const path = pathOf(c);
+      /* A user turn that has been sent but not answered yet carries `pre`: the measurement taken
+         while it was still sitting in the composer. Without it the ring would fall back to the
+         previous turn the instant you press send, so attaching an image would show its cost, then
+         lose it, then find it again once the reply landed. The prompt has not changed between
+         those two moments, so neither should the number. Inexact for the same reason `pt` is:
+         it covers everything up to the question, not the answer still being written. */
+      const tail = path[path.length - 1];
+      if (tail && tail.role === "user" && tail.pre != null && (!tail.mdl || tail.mdl === c.model))
+        return { used: tail.pre, exact: false, node: tail };
       for (let i = path.length - 1; i >= 0; i--) {
         const n = path[i];
         if (n.role !== "assistant") continue;
@@ -3978,9 +4013,12 @@
        each. Balanced sits at Anthropic's number because past roughly this point vision
        transformers show sharply diminishing returns while cost keeps growing linearly.
 
-       The exception is dense text. A 1920x1080 screenshot at Balanced becomes ~1428x803 and
-       14px text stays legible, but an A4 page scanned at 300dpi (8.7 MP) drops to ~902x1276,
-       putting 10pt text at 4-5px. Detailed and Full exist for that case. */
+       Text is what decides the floor. A 1920x1080 screenshot at Balanced scales by 0.74 to
+       ~1430x804, so 14px UI text lands at ~10px and stays legible. An A4 page scanned at 300dpi
+       (8.7 MP) scales by 0.36 to ~902x1276, so 10pt body text lands at ~15px, also fine. What
+       Balanced does not carry is small print and dense tables, which is what Detailed and Full
+       are for. Below Balanced the screenshot case is the first to break: at 0.6 MP that same
+       14px text is down to ~7px. */
     const IMAGE_BUDGETS = {
       balanced: { label: "Balanced (~1.15 MP)", pixels: 1150000 },
       detailed: { label: "Detailed (~2 MP)", pixels: 2000000 },
@@ -4212,13 +4250,15 @@
       for (const a of draftAtt) {
         const chip = document.createElement("div"); chip.className = "achip";
         const head = a.kind === "image"
-          ? `<img class="athumb" src="${escAttr(blobUrl("draft", a.blob))}" alt="" title="Click to preview">`
+          ? `<img class="athumb" src="${escAttr(blobUrl("draft", a.blob))}" alt="">`
           : `<span class="aicon">${ICON_FILE}</span>`;
         chip.innerHTML = `${head}<span class="ameta"><span class="aname" title="${escAttr(a.name)}">${esc(a.name)}</span><span class="asub">${esc(attachSubtitle(a))}</span></span>`;
         if (a.kind === "image") {
-          const th = chip.querySelector(".athumb");
-          th.style.cursor = "zoom-in";
-          th.addEventListener("click", () => openLightbox(a));
+          // The whole card is the target. Anywhere but the remove button, which is the one thing
+          // on the chip that must not also mean "preview".
+          chip.classList.add("clickable");
+          chip.title = "Click to preview";
+          chip.addEventListener("click", e => { if (e.target.closest(".ax")) return; openLightbox(a); });
         }
         const x = document.createElement("button"); x.className = "ax"; x.title = "Remove"; x.innerHTML = "&times;";
         x.addEventListener("click", () => removeDraft(a.id));
@@ -4494,6 +4534,9 @@
           // Posted before the model is loaded, so the message is anchored to the chat it was
           // typed in from the moment you press send.
           const un = addNode(c, c.leafId, "user", item.text, null, null, item.att);
+          // Only meaningful under the tokenizer it was measured with, so the model tags along and
+          // pathUsage drops it if the chat has moved to a different one since.
+          if (item.pre && item.mdl === c.model) { un.pre = item.pre; un.mdl = c.model; }
           touch(c); save(); renderQueue();
           if (c.id === state.currentId) openConversation();
           loadCancelledByUser = false;
@@ -5261,6 +5304,9 @@
       if (!t && !atts.length) return;
       const c = currentConv();
       const front = !!compose;
+      // Read while the composer still holds what was measured, so the figure can be handed to the
+      // message being sent instead of being thrown away with the draft two lines below.
+      const pre = (draftCtxKey && draftCtxKey === draftKey(c)) ? draftCtx : 0;
       if (compose) { compose = null; $("#composeBar").style.display = "none"; }
       // Cleared before the await so a second Enter cannot send the same attachments twice.
       draftAtt = [];
@@ -5270,7 +5316,9 @@
       // Only now do the bytes reach IndexedDB. Up to this point the draft could have been
       // abandoned, and nothing on disk should outlive a message that was never sent.
       if (atts.length) await commitDraft(atts);
-      enqueue(c, t, front, atts.map(attDescriptor));
+      const item = enqueue(c, t, front, atts.map(attDescriptor));
+      // Carried on the queue item so it survives a reload, and applied to the node when it posts.
+      if (pre) { item.pre = pre; item.mdl = c.model; save(); }
       resumeQueue();
       renderQueue();
       drainQueue();
