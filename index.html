@@ -1308,10 +1308,70 @@
       cursor: zoom-in
     }
 
-    .node-img.big {
-      max-width: 100%;
-      max-height: none;
+    /* ---- image preview ----
+       Sized off the viewport rather than filling it, so the app stays visible behind and the
+       preview reads as a layer over the chat instead of a mode you have been thrown into. */
+    #lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, .74);
+      padding: 40px;
       cursor: zoom-out
+    }
+
+    #lightbox.open {
+      display: flex
+    }
+
+    #lightbox .lb-frame {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      max-width: 88vw;
+      max-height: 88vh
+    }
+
+    #lightbox img {
+      max-width: 88vw;
+      max-height: 80vh;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      object-fit: contain;
+      cursor: default;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, .55)
+    }
+
+    #lightbox figcaption {
+      font-size: 12.5px;
+      color: #d7d7d7;
+      font-family: var(--mono);
+      text-align: center;
+      overflow-wrap: anywhere
+    }
+
+    #lightbox .lb-close {
+      position: absolute;
+      top: 16px;
+      right: 18px;
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #eee;
+      background: rgba(255, 255, 255, .1);
+      cursor: pointer
+    }
+
+    #lightbox .lb-close:hover {
+      background: rgba(255, 255, 255, .2)
     }
 
     .node-file {
@@ -2522,6 +2582,17 @@
     <h2>Already open in another tab</h2>
     <p>Local Harness runs in one tab at a time, so the two can't fight over which model is loaded.<br><br>Switch to the
       tab that already has it open, and close this one.</p>
+  </div>
+
+  <div id="lightbox">
+    <button class="lb-close" id="lbClose" title="Close (Esc)"><svg width="20" height="20" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 6 6 18M6 6l12 12" />
+      </svg></button>
+    <figure class="lb-frame">
+      <img id="lbImg" alt="">
+      <figcaption id="lbCap"></figcaption>
+    </figure>
   </div>
 
   <div id="tip"></div>
@@ -3976,7 +4047,12 @@
     // should explain itself once, not open eight dialogs.
     async function addFiles(files) {
       const list = Array.from(files || []); if (!list.length) return;
-      const model = els.model.value, vision = modelHasVision(model);
+      const model = els.model.value;
+      /* Capabilities arrive from /api/show in the background, so on a cold start a vision model
+         can briefly look like it has none and every image would be refused for the wrong reason.
+         Only waited on when the answer is genuinely missing; a known model costs nothing. */
+      if (list.some(isImageFile) && !modelCaps(model).length) await enrichModel(model);
+      const vision = modelHasVision(model);
       const refused = [];
       for (const f of list) {
         if (isImageFile(f)) {
@@ -4058,6 +4134,29 @@
       urlBuckets[bucket] = [];
     }
     const ICON_FILE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+
+    /* ---- image preview ----
+       Always shows the stored original, never the copy that goes to the model: looking at your own
+       screenshot should not show you a downscaled one. Its own object URL, released on close, so a
+       preview never depends on the thread or the composer still holding the image. */
+    let lbUrl = null;
+    function openLightbox(rec) {
+      const img = $("#lbImg"), cap = $("#lbCap");
+      if (lbUrl) { try { URL.revokeObjectURL(lbUrl); } catch { } lbUrl = null; }
+      if (rec.blob) { lbUrl = URL.createObjectURL(rec.blob); img.src = lbUrl; }
+      else img.src = "data:" + (rec.mime || "image/png") + ";base64," + rec.send;
+      img.alt = rec.name;
+      const size = (rec.srcW && rec.srcH) ? `${rec.srcW}×${rec.srcH}` : `${rec.w}×${rec.h}`;
+      const sent = (rec.srcW && (rec.srcW !== rec.w || rec.srcH !== rec.h)) ? ` · sent at ${rec.w}×${rec.h}` : "";
+      cap.textContent = `${rec.name} · ${size}${sent} · ${fmtBytes(rec.size)}`;
+      $("#lightbox").classList.add("open");
+    }
+    function closeLightbox() {
+      $("#lightbox").classList.remove("open");
+      $("#lbImg").removeAttribute("src");
+      if (lbUrl) { try { URL.revokeObjectURL(lbUrl); } catch { } lbUrl = null; }
+    }
+    const lightboxOpen = () => $("#lightbox").classList.contains("open");
     // The second line is the honest one: for an image it reports the size actually sent and the
     // original it came from, so a resize is something the user sees rather than something the app
     // did quietly on their behalf.
@@ -4080,7 +4179,7 @@
             const img = document.createElement("img");
             img.className = "node-img"; img.alt = rec.name; img.title = `${rec.name} · ${rec.w}×${rec.h}`;
             img.src = rec.blob ? blobUrl("thread", rec.blob) : "data:" + (rec.mime || "image/png") + ";base64," + rec.send;
-            img.addEventListener("click", () => img.classList.toggle("big"));
+            img.addEventListener("click", () => openLightbox(rec));
             box.appendChild(img);
           } else {
             const d = document.createElement("details"); d.className = "node-file";
@@ -4113,9 +4212,14 @@
       for (const a of draftAtt) {
         const chip = document.createElement("div"); chip.className = "achip";
         const head = a.kind === "image"
-          ? `<img class="athumb" src="${escAttr(blobUrl("draft", a.blob))}" alt="">`
+          ? `<img class="athumb" src="${escAttr(blobUrl("draft", a.blob))}" alt="" title="Click to preview">`
           : `<span class="aicon">${ICON_FILE}</span>`;
         chip.innerHTML = `${head}<span class="ameta"><span class="aname" title="${escAttr(a.name)}">${esc(a.name)}</span><span class="asub">${esc(attachSubtitle(a))}</span></span>`;
+        if (a.kind === "image") {
+          const th = chip.querySelector(".athumb");
+          th.style.cursor = "zoom-in";
+          th.addEventListener("click", () => openLightbox(a));
+        }
         const x = document.createElement("button"); x.className = "ax"; x.title = "Remove"; x.innerHTML = "&times;";
         x.addEventListener("click", () => removeDraft(a.id));
         chip.appendChild(x);
@@ -5180,7 +5284,15 @@
     /* ---- attaching ---- */
     els.attachBtn.addEventListener("click", () => els.fileInput.click());
     // Reset after reading, or picking the same file twice in a row fires no change event.
-    els.fileInput.addEventListener("change", e => { const f = e.target.files; els.fileInput.value = ""; addFiles(f); });
+    /* Copied out with Array.from BEFORE the input is reset. `files` is a live FileList, not a
+       snapshot, so clearing the input empties the very list just taken from it: the picker would
+       deliver nothing at all, or lose everything after the first file on a multi-select. The
+       reset itself is needed, or picking the same file twice in a row fires no change event. */
+    els.fileInput.addEventListener("change", e => {
+      const picked = Array.from(e.target.files || []);
+      els.fileInput.value = "";
+      addFiles(picked);
+    });
     // A screenshot on the clipboard is the commonest way an image gets attached, and it arrives
     // as files on the paste event. Text pastes are left entirely alone.
     els.input.addEventListener("paste", e => {
@@ -5193,14 +5305,33 @@
     let dragDepth = 0;
     const dragHasFiles = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files"));
     const endDrag = () => { dragDepth = 0; els.composer.classList.remove("dragging"); };
-    addEventListener("dragenter", e => { if (!dragHasFiles(e)) return; dragDepth++; els.composer.classList.add("dragging"); });
-    addEventListener("dragover", e => { if (dragHasFiles(e)) e.preventDefault(); });   // or the drop never fires
+    // Both dragenter and dragover have to be cancelled to register as a drop target. Cancelling
+    // only dragover is enough in Chrome but not everywhere, and without it the browser treats the
+    // drop as navigation and opens the file instead.
+    addEventListener("dragenter", e => {
+      if (!dragHasFiles(e)) return;
+      e.preventDefault();
+      dragDepth++; els.composer.classList.add("dragging");
+    });
+    addEventListener("dragover", e => {
+      if (!dragHasFiles(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";        // otherwise the cursor says "not allowed"
+      if (!dragDepth) { dragDepth = 1; els.composer.classList.add("dragging"); }
+    });
     addEventListener("dragleave", e => { if (!dragHasFiles(e)) return; if (--dragDepth <= 0) endDrag(); });
     addEventListener("drop", e => {
       if (!dragHasFiles(e)) return;
       e.preventDefault(); endDrag();
-      addFiles(e.dataTransfer.files);
+      addFiles(Array.from(e.dataTransfer.files || []));
     });
+    // A drag abandoned outside the window never sends dragleave, leaving the highlight stuck on.
+    addEventListener("dragend", endDrag);
+    addEventListener("blur", endDrag);
+
+    // Backdrop closes, the image itself does not, so a click to look closer is not a click to leave.
+    $("#lightbox").addEventListener("click", e => { if (e.target.closest("#lbImg")) return; closeLightbox(); });
+    $("#lbClose").addEventListener("click", closeLightbox);
 
     // Leaves any in-flight reply running, same as switching to an existing chat.
     els.newChat.addEventListener("click", () => { newConversation(); openConversation(); els.input.focus(); });
@@ -5242,7 +5373,7 @@
       const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 900);
     });
     // Escape dismisses whatever is on top: modal, then a drawer, and otherwise stops generation.
-    document.addEventListener("keydown", e => { if (e.key === "Escape") { const m = $("#confirm"); if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); } });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); } });
     document.addEventListener("visibilitychange", () => { if (owns && !document.hidden) refreshPs(); });
     $("#confirm").addEventListener("click", e => { const m = $("#confirm"); if (e.target === m && m._cancel) m._cancel(); });  // backdrop = cancel
 
