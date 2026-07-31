@@ -3017,12 +3017,38 @@
       compose = null;
     }
 
+    function saveCurrentDraft() {
+      const cur = state.conversations[state.currentId];
+      if (!cur) return;
+      const text = (els && els.input) ? (els.input.value || "").trim() : "";
+      if (text || draftAtt.length) {
+        cur.draft = { text: els.input.value, att: draftAtt.map(a => ({ ...a })) };
+      } else {
+        delete cur.draft;
+      }
+    }
+
+    function restoreCurrentDraft() {
+      const cur = state.conversations[state.currentId];
+      if (cur && cur.draft) {
+        if (els && els.input) {
+          els.input.value = cur.draft.text || "";
+          els.input.style.height = "auto";
+          els.input.style.height = Math.min(els.input.scrollHeight, 220) + "px";
+        }
+        draftAtt = Array.isArray(cur.draft.att) ? cur.draft.att.map(a => ({ ...a })) : [];
+        renderAttachBar();
+        measureDraft();
+        syncSendButton();
+      } else {
+        clearInput();
+      }
+    }
+
     function clearInput() {
       if (els && els.input) {
         els.input.value = "";
         els.input.style.height = "auto";
-        // The draft belongs to the composer, not to a chat, so it goes wherever typed text goes.
-        // Nothing has been written to IndexedDB yet, so dropping the records is the whole cleanup.
         draftAtt = [];
         renderAttachBar();
         clearDraftCtx();
@@ -3031,6 +3057,7 @@
     }
 
     function newConversation() {
+      saveCurrentDraft();
       cancelCompose();
       const id = uid();
       state.conversations[id] = { id, title: nextChatTitle(), model: state.settings.model || pickDefaultModel(), nodes: {}, leafId: null, ctxUsed: 0, seq: nextOrd(), createdAt: Date.now(), updatedAt: Date.now() };
@@ -3643,7 +3670,7 @@
         el.addEventListener("click", ev => {
           const act = ev.target.closest("[data-act]");
           if (act) { ev.stopPropagation(); act.dataset.act === "delete" ? deleteConv(c.id) : renameConv(c.id, el); return; }
-          if (c.id !== state.currentId) { cancelCompose(); state.currentId = c.id; clearInput(); save(); openConversation(); }
+          if (c.id !== state.currentId) { saveCurrentDraft(); cancelCompose(); state.currentId = c.id; save(); openConversation(); }
         });
         els.convList.appendChild(el);
       }
@@ -3759,6 +3786,7 @@
         live.dom = dom;
       }
       $("#composeBar").style.display = compose ? "flex" : "none";
+      if (!compose) restoreCurrentDraft();
       renderQueue();
       updateLoadUI(); updateCtxRing(); scrollBottom();
       scheduleMeasure();   // covers branch and chat switches: measure this tail if it is unmeasured
@@ -4024,6 +4052,7 @@
         for (const n of Object.values((c && c.nodes) || {})) for (const id of attIds(n)) live.add(id);
         // A queued message's attachments are already on disk but have no node yet.
         for (const it of ((c && c.queue) || [])) for (const a of (it.att || [])) if (a && a.id) live.add(a.id);
+        for (const a of ((c && c.draft && c.draft.att) || [])) if (a && a.id) live.add(a.id);
       }
       for (const a of draftAtt) live.add(a.id);
       const keys = await attTx("readonly", st => attReq(st.getAllKeys()));
@@ -5484,6 +5513,7 @@
       const atts = draftAtt;
       if (!t && !atts.length) return;
       const c = currentConv();
+      delete c.draft;
       const front = !!compose;
       // Read while the composer still holds what was measured, so the figure can be handed to the
       // message being sent instead of being thrown away with the draft two lines below.
