@@ -4250,7 +4250,7 @@
       const refused = [];
       for (const f of list) {
         if (isGifFile(f)) {
-          refused.push(`<b>${esc(f.name)}</b> is a GIF file (GIF format is not supported).`);
+          refused.push(`GIF files are not supported.`);
           continue;
         }
         if (isImageFile(f)) {
