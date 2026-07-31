@@ -3346,6 +3346,25 @@
       await Promise.all(Array.from({ length: Math.min(SHOW_CONCURRENCY, rest.length) }, worker));
     }
 
+    function updateModelOptions() {
+      if (!els || !els.model || !modelCache.length) return;
+      const c = currentConv();
+      const inHistory = c ? Object.values(c.nodes || {}).filter(nodeHasImage).length : 0;
+      const inDraft = draftAtt.filter(a => a.kind === "image").length;
+      const hasImages = (inHistory > 0) || (inDraft > 0);
+      const curValue = els.model.value;
+
+      els.model.innerHTML = modelCache.map(m => {
+        const vision = modelHasVision(m.name);
+        const disabled = hasImages && !vision;
+        const disAttr = disabled ? ' disabled style="color:var(--muted)"' : '';
+        const titleAttr = disabled ? ' title="This model cannot see images"' : '';
+        const labelExtra = disabled ? ' (no vision)' : '';
+        return `<option value="${escAttr(m.name)}"${disAttr}${titleAttr}>${esc(m.name)}${labelExtra}</option>`;
+      }).join("");
+      els.model.value = curValue;
+    }
+
     async function loadModels() {
       try {
         const r = await fetch(base() + "/api/tags"); if (!r.ok) throw new Error("HTTP " + r.status);
@@ -3356,11 +3375,12 @@
         const stale = syncRegistry();
         reconcileModelLimits();   // fit newly pulled models to their own limits
         const names = modelCache.map(m => m.name);
-        els.model.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+        updateModelOptions();
         const c = currentConv();
         if (!state.settings.model || !names.includes(state.settings.model)) state.settings.model = names[0] || "";
         if (!c.model || !names.includes(c.model)) c.model = pickDefaultModel() || state.settings.model;
         els.model.value = c.model;
+        updateModelOptions();
         setConn(true, names.length + " model" + (names.length === 1 ? "" : "s")); els.banner.style.display = "none";
         updateCap(); save();
         sweepRegistry(stale);     // deliberately not awaited: never hold the first paint on it
@@ -3792,7 +3812,7 @@
       $("#composeBar").style.display = compose ? "flex" : "none";
       if (!compose) restoreCurrentDraft();
       renderQueue();
-      updateLoadUI(); updateCtxRing(); scrollBottom();
+      updateLoadUI(); updateCtxRing(); updateModelOptions(); scrollBottom();
       scheduleMeasure();   // covers branch and chat switches: measure this tail if it is unmeasured
     }
     let autostick = true, lastTop = 1e9;   // follow the stream only while the user is parked at the bottom
@@ -4256,12 +4276,13 @@
        Synchronous because the caller has to decide before committing the switch, which the
        descriptor on the node makes possible without touching IndexedDB. The dialog is fired and
        not awaited, since the answer is already known. */
-    function visionSwitchAllowed(c, next) {
+    function visionSwitchAllowed(c, next, silent = false) {
       if (!next || !c || next === c.model) return true;
       if (modelHasVision(next)) return true;
       const inHistory = Object.values(c.nodes || {}).filter(nodeHasImage).length;
       const inDraft = draftAtt.filter(a => a.kind === "image").length;
       if (!inHistory && !inDraft) return true;
+      if (silent) return false;
       // Two genuinely different situations, so they get told apart: an image already in the
       // conversation cannot be taken back, while one merely attached can just be removed.
       const where = inHistory
@@ -4413,6 +4434,7 @@
         bar.appendChild(chip);
       }
       renderAttachNote();
+      updateModelOptions();
     }
     /* ============ context measurement ============
        The request body for a chat turn, shared with measureCtx() so a reading can never drift
@@ -5658,7 +5680,7 @@
       if (!modelCache || !modelCache.length) return;
       const c = currentConv();
       const currentModel = els.model.value;
-      const candidates = modelCache.map(m => m.name).filter(name => visionSwitchAllowed(c, name));
+      const candidates = modelCache.map(m => m.name).filter(name => visionSwitchAllowed(c, name, true));
       if (!candidates.length) return;
       let curIdx = candidates.indexOf(currentModel);
       const nextIdx = (curIdx + 1) % candidates.length;
