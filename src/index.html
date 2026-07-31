@@ -4274,9 +4274,7 @@
       syncSendButton();
       measureDraft();
       if (refused.length) {
-        await dialog(refused.length > 1 ? "Some files were not attached" : "That file was not attached",
-          refused.join("<br>") + `<br><br><span style="color:var(--muted)">Images need a vision model. Text and code files work with any model. Anything else has to be converted first.</span>`,
-          [{ label: "OK", value: "ok", cancel: true, primary: true }]);
+        showAttachError(refused.join("<br>"));
       }
     }
     // Committed at send time: draft records become real rows and the node keeps their descriptors.
@@ -4413,15 +4411,46 @@
        The caution is guidance rather than a limit. Most vision models attend well to one image
        and acceptably to two; past that they start averaging over them. Worth saying once, not
        worth refusing over. */
+    let attachErrorMsg = "";
+    let attachErrorTimer = null;
+
+    function showAttachError(msg) {
+      attachErrorMsg = msg;
+      renderAttachNote();
+      if (attachErrorTimer) clearTimeout(attachErrorTimer);
+      attachErrorTimer = setTimeout(() => {
+        attachErrorMsg = "";
+        renderAttachNote();
+      }, 5000);
+    }
+
     function renderAttachNote() {
       const el = $("#attachNote"); if (!el) return;
       const lines = [];
+      if (attachErrorMsg) {
+        lines.push({ html: attachErrorMsg, isError: true });
+      }
       if (draftAtt.length) {
-        if (draftAdds > 0) lines.push(`Attachments add ≈${draftAdds.toLocaleString()} tokens`);
-        if (draftAtt.filter(a => a.kind === "image").length > 2) lines.push("Most vision models attend well to one or two images.");
+        if (draftAdds > 0) lines.push({ text: `Attachments add ≈${draftAdds.toLocaleString()} tokens` });
+        if (draftAtt.filter(a => a.kind === "image").length > 2) lines.push({ text: "Most vision models attend well to one or two images." });
       }
       el.innerHTML = "";
-      for (const t of lines) { const s = document.createElement("span"); s.textContent = t; el.appendChild(s); }
+      for (const item of lines) {
+        const s = document.createElement("span");
+        if (typeof item === "string") {
+          s.textContent = item;
+        } else if (item.html) {
+          s.innerHTML = item.html;
+        } else {
+          s.textContent = item.text || "";
+        }
+        if (item.isError) {
+          s.style.color = "var(--danger, #ff4d4f)";
+          s.style.fontWeight = "500";
+          s.style.fontSize = "12px";
+        }
+        el.appendChild(s);
+      }
       el.classList.toggle("on", lines.length > 0);
     }
     function renderAttachBar() {
