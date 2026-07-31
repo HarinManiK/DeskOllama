@@ -2577,9 +2577,18 @@
         <div class="field switch"><label>Force thinking toggle<span class="help"
               data-tip="Show the thinking button even when Ollama reports no thinking support.&#10;Only needed for a GGUF with no chat template, which Ollama cannot inspect.&#10;If the model really can't think, this switches itself back off on the first send.">?</span></label><input
             type="checkbox" id="s_forcethinking"></div>
-        <div class="field"><label>Cycle model shortcut<span class="help"
-              data-tip="Keyboard shortcut to cycle through installed models (e.g. Alt+W, Ctrl+Shift+M).">?</span></label><input
-            type="text" id="s_cyclemodelshortcut" placeholder="Alt+W"></div>
+      </div>
+      <div class="set-group">
+        <p class="gh">Shortcuts</p>
+        <div class="field">
+          <label>Cycle model shortcut<span class="help"
+                data-tip="Click Record shortcut and press your preferred key combination to cycle through installed models.">?</span></label>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+            <span id="s_shortcutBadge" style="font-family:var(--font-mono, monospace);font-weight:600;padding:6px 12px;font-size:13px;background:var(--bg-tertiary, #222);border:1px solid var(--border-color, #333);border-radius:6px;color:var(--fg-primary, #fff)">Alt + W</span>
+            <button type="button" id="s_recordShortcutBtn" class="btn" style="padding:6px 14px">Record shortcut</button>
+            <input type="hidden" id="s_cyclemodelshortcut" value="Alt+W">
+          </div>
+        </div>
       </div>
       <div class="set-group">
         <p class="gh">Images</p>
@@ -5084,6 +5093,74 @@
       el.textContent = msg;
       el.style.display = msg ? "" : "none";
     }
+    function formatShortcutDisplay(shortcutStr) {
+      if (!shortcutStr) return "Alt + W";
+      return shortcutStr.split("+").map(p => p.trim()).join(" + ");
+    }
+
+    function updateShortcutBadge(str) {
+      const badge = $("#s_shortcutBadge");
+      const hidden = $("#s_cyclemodelshortcut");
+      if (hidden) hidden.value = str;
+      if (badge) badge.textContent = formatShortcutDisplay(str);
+    }
+
+    let isRecordingShortcut = false;
+    let recordingListener = null;
+
+    function stopShortcutRecording() {
+      isRecordingShortcut = false;
+      const btn = $("#s_recordShortcutBtn");
+      if (btn) {
+        btn.textContent = "Record shortcut";
+        btn.classList.remove("primary");
+      }
+      if (recordingListener) {
+        window.removeEventListener("keydown", recordingListener, true);
+        recordingListener = null;
+      }
+    }
+
+    function startShortcutRecording() {
+      if (isRecordingShortcut) { stopShortcutRecording(); return; }
+      isRecordingShortcut = true;
+      const btn = $("#s_recordShortcutBtn");
+      if (btn) {
+        btn.textContent = "Press keys...";
+        btn.classList.add("primary");
+      }
+
+      recordingListener = e => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.key === "Escape") {
+          stopShortcutRecording();
+          return;
+        }
+
+        const standaloneMods = ["Control", "Alt", "Shift", "Meta"];
+        if (standaloneMods.includes(e.key)) return;
+
+        const parts = [];
+        if (e.ctrlKey) parts.push("Ctrl");
+        if (e.altKey) parts.push("Alt");
+        if (e.shiftKey) parts.push("Shift");
+        if (e.metaKey) parts.push("Cmd");
+
+        let keyName = e.key;
+        if (keyName === " ") keyName = "Space";
+        else if (keyName.length === 1) keyName = keyName.toUpperCase();
+
+        parts.push(keyName);
+        const newShortcut = parts.join("+");
+        updateShortcutBadge(newShortcut);
+        stopShortcutRecording();
+      };
+
+      window.addEventListener("keydown", recordingListener, true);
+    }
+
     function fillSettingsForm() {
       const s = state.settings, model = els.model.value;
       $("#s_base").value = s.baseUrl;
@@ -5095,7 +5172,7 @@
       $("#s_keepalive").value = resolveSetting("keepAlive", model) || "";
       $("#s_format").value = resolveSetting("format", model) || "";
       $("#s_forcethinking").checked = !!resolveSetting("forceThinking", model);
-      $("#s_cyclemodelshortcut").value = resolveSetting("cycleModelShortcut", model) || "Alt+W";
+      updateShortcutBadge(resolveSetting("cycleModelShortcut", model) || "Alt+W");
       const imgPx = resolveSetting("imageDetail", model);
       $("#s_imagedetail").value = (imgPx == null || imgPx === "") ? "" : mpText(imgPx);
       renderImagePresets();
@@ -5157,6 +5234,9 @@
       const ex = EXTRA_BY_KEY[k];
       if (ex && ex.type === "bool") return v ? "On" : "Off";   // before the blank check: false is a value, not "unset"
       // Ahead of the blank check for the same reason: 0 is "send the original", not "unset".
+      if (k === "cycleModelShortcut") {
+        return formatShortcutDisplay(v || "Alt+W");
+      }
       if (k === "imageDetail") {
         if (v == null || v === "") return `Default · ${mpText(DEFAULT_IMAGE_PIXELS)} MP`;
         return Number(v) === 0 ? "Original" : `${mpText(v)} MP`;
@@ -5651,6 +5731,7 @@
     els.settingsBtn.addEventListener("click", openSettings);
     els.closeSettings.addEventListener("click", closeSettings);
     els.overlay.addEventListener("click", () => { if ($("#ctxeditor").classList.contains("open")) closeContext(); else closeSettings(); });
+    $("#s_recordShortcutBtn").addEventListener("click", startShortcutRecording);
     $("#resetSettings").addEventListener("click", resetSettings);
     $("#ctxBtn").addEventListener("click", openContext);
     $("#ctxClose").addEventListener("click", closeContext);
