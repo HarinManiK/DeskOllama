@@ -4097,10 +4097,11 @@
     /* ---- what we accept ----
        .svg is text/XML, not a raster image: handing it to a vision encoder sends markup to
        something that cannot read markup, so it is classed with the code files it resembles. */
-    const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp)$/i;
+    const IMAGE_EXT = /\.(png|jpe?g|webp|bmp)$/i;
     const TEXT_EXT = /\.(txt|md|markdown|json|jsonc|csv|tsv|py|rs|js|mjs|cjs|ts|tsx|jsx|html|htm|css|scss|go|c|h|cpp|hpp|cc|java|kt|swift|rb|php|sh|bash|zsh|fish|yml|yaml|xml|svg|log|toml|sql|ini|cfg|conf|env|bat|cmd|ps1|lua|r|pl|dart|vue|svelte|gradle|dockerfile|gitignore|makefile)$/i;
-    const isImageFile = f => (f.type || "").startsWith("image/") ? !/svg/i.test(f.type) : IMAGE_EXT.test(f.name);
-    const isTextFile = f => (f.type || "").startsWith("text/") || TEXT_EXT.test(f.name) || /^(dockerfile|makefile|licen[cs]e|readme)$/i.test(f.name);
+    const isGifFile = f => (f.type || "").toLowerCase() === "image/gif" || /\.gif$/i.test(f.name || "");
+    const isImageFile = f => isGifFile(f) ? false : ((f.type || "").startsWith("image/") ? !/svg/i.test(f.type) : IMAGE_EXT.test(f.name));
+    const isTextFile = f => isGifFile(f) ? false : ((f.type || "").startsWith("text/") || TEXT_EXT.test(f.name) || /^(dockerfile|makefile|licen[cs]e|readme)$/i.test(f.name));
     function fmtBytes(n) {
       if (n < 1024) return n + " B";
       if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
@@ -4208,7 +4209,7 @@
         // PNG for anything that might carry alpha, so a transparent screenshot is not flattened
         // onto black, and because JPEG ringing lands hardest on exactly the small text a
         // screenshot is attached for. JPEG elsewhere, where it is far smaller at equal quality.
-        const keepAlpha = /png|webp|gif/i.test(blob.type || "");
+        const keepAlpha = /png|webp/i.test(blob.type || "");
         out = await new Promise(r => cv.toBlob(r, keepAlpha ? "image/png" : "image/jpeg", 0.9)) || blob;
       }
       if (bmp && bmp.close) bmp.close();
@@ -4248,6 +4249,10 @@
       const vision = modelHasVision(model);
       const refused = [];
       for (const f of list) {
+        if (isGifFile(f)) {
+          refused.push(`<b>${esc(f.name)}</b> is a GIF file (GIF format is not supported).`);
+          continue;
+        }
         if (isImageFile(f)) {
           if (!vision) { refused.push(`<b>${esc(f.name)}</b> is an image, and <b>${esc(model || "no model")}</b> cannot see images.`); continue; }
           const fit = await fitImage(f, imageBudgetFor(model));
