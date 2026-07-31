@@ -2577,6 +2577,9 @@
         <div class="field switch"><label>Force thinking toggle<span class="help"
               data-tip="Show the thinking button even when Ollama reports no thinking support.&#10;Only needed for a GGUF with no chat template, which Ollama cannot inspect.&#10;If the model really can't think, this switches itself back off on the first send.">?</span></label><input
             type="checkbox" id="s_forcethinking"></div>
+        <div class="field"><label>Cycle model shortcut<span class="help"
+              data-tip="Keyboard shortcut to cycle through installed models (e.g. Alt+W, Ctrl+Shift+M).">?</span></label><input
+            type="text" id="s_cyclemodelshortcut" placeholder="Alt+W"></div>
       </div>
       <div class="set-group">
         <p class="gh">Images</p>
@@ -2845,6 +2848,7 @@
       // where /api/show has nothing to read and so reports no thinking capability. Per-model by
       // default, and it clears itself if the model turns out to reject `think`.
       { k: "forceThinking", label: "Force thinking toggle", type: "bool" },
+      { k: "cycleModelShortcut", label: "Cycle model shortcut", locked: true },
       // Global by default: one budget for everything is what most people want. Scoping it to a
       // single model is still one click away, for a strong vision model worth spending more on.
       { k: "imageDetail", label: "Image detail" },
@@ -2853,7 +2857,7 @@
     // Keys that can never be per-model.
     const GLOBAL_ONLY_KEYS = EXTRA_SETTINGS.filter(it => it.locked).map(it => it.k);
     // Built-in classification. Anything not listed here defaults to per-model.
-    const DEFAULT_GLOBAL_KEYS = new Set(["baseUrl", "system", "keepAlive", "imageDetail"]);
+    const DEFAULT_GLOBAL_KEYS = new Set(["baseUrl", "system", "keepAlive", "imageDetail", "cycleModelShortcut"]);
     // Display order for the review dialog.
     const SCOPABLE_KEYS = [...EXTRA_SETTINGS.map(it => it.k), ...SPEC_ITEMS.map(it => it.k)];
     const isParamKey = k => Object.prototype.hasOwnProperty.call(SPEC_BY_KEY, k);
@@ -2874,7 +2878,7 @@
       // Residency. autoLoadPrompted is bookkeeping for the first-run offer, not a reviewable
       // setting, so it is deliberately absent from EXTRA_SETTINGS.
       autoLoad: false, defaultModel: "", oneAtOnce: true, unloadOnClose: true, autoLoadPrompted: false,
-      forceThinking: false,
+      forceThinking: false, cycleModelShortcut: "Alt+W",
       // Pixels of an attached image actually sent, by area. 0 means send it untouched; blank or
       // null falls back to DEFAULT_IMAGE_PIXELS. Stored in pixels, entered in megapixels.
       imageDetail: DEFAULT_IMAGE_PIXELS
@@ -5069,6 +5073,7 @@
       $("#s_keepalive").value = resolveSetting("keepAlive", model) || "";
       $("#s_format").value = resolveSetting("format", model) || "";
       $("#s_forcethinking").checked = !!resolveSetting("forceThinking", model);
+      $("#s_cyclemodelshortcut").value = resolveSetting("cycleModelShortcut", model) || "Alt+W";
       const imgPx = resolveSetting("imageDetail", model);
       $("#s_imagedetail").value = (imgPx == null || imgPx === "") ? "" : mpText(imgPx);
       renderImagePresets();
@@ -5278,6 +5283,7 @@
         baseUrl: normalizeBase($("#s_base").value), system: $("#s_system").value,
         keepAlive: $("#s_keepalive").value.trim(), format: $("#s_format").value,
         forceThinking: $("#s_forcethinking").checked,
+        cycleModelShortcut: ($("#s_cyclemodelshortcut").value || "").trim() || "Alt+W",
         imageDetail: readImageBudget(),
         autoLoad: $("#s_autoload").checked, defaultModel: $("#s_defaultmodel").value,
         oneAtOnce: $("#s_oneatonce").checked, unloadOnClose: $("#s_unloadonclose").checked,
@@ -5634,8 +5640,45 @@
       const code = btn.closest("pre").querySelector("code"); navigator.clipboard.writeText(code.textContent);
       const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 900);
     });
+    function matchShortcut(e, shortcutStr) {
+      if (!shortcutStr) return false;
+      const parts = shortcutStr.split("+").map(p => p.trim().toLowerCase());
+      const key = parts[parts.length - 1];
+      const hasAlt = parts.includes("alt");
+      const hasCtrl = parts.includes("ctrl") || parts.includes("control");
+      const hasShift = parts.includes("shift");
+      const hasMeta = parts.includes("meta") || parts.includes("cmd") || parts.includes("command");
+      const eventKey = e.key ? e.key.toLowerCase() : "";
+      const eventCode = e.code ? e.code.toLowerCase() : "";
+      const keyMatches = eventKey === key || eventCode === "key" + key || eventCode === key;
+      return keyMatches && (e.altKey === hasAlt) && (e.ctrlKey === hasCtrl) && (e.shiftKey === hasShift) && (e.metaKey === hasMeta);
+    }
+
+    function cycleModel() {
+      if (!modelCache || !modelCache.length) return;
+      const c = currentConv();
+      const currentModel = els.model.value;
+      const candidates = modelCache.map(m => m.name).filter(name => visionSwitchAllowed(c, name));
+      if (!candidates.length) return;
+      let curIdx = candidates.indexOf(currentModel);
+      const nextIdx = (curIdx + 1) % candidates.length;
+      const nextModel = candidates[nextIdx];
+      if (nextModel && nextModel !== currentModel) {
+        els.model.value = nextModel;
+        els.model.dispatchEvent(new Event("change"));
+      }
+    }
+
     // Escape dismisses whatever is on top: modal, then a drawer, and otherwise stops generation or cancels compose mode.
-    document.addEventListener("keydown", e => { if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); else if (compose) { cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); } } });
+    // Shortcut key (default Alt+W) cycles through available installed models.
+    document.addEventListener("keydown", e => {
+      if (matchShortcut(e, resolveSetting("cycleModelShortcut") || "Alt+W")) {
+        e.preventDefault();
+        cycleModel();
+        return;
+      }
+      if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); else if (compose) { cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); } }
+    });
     document.addEventListener("visibilitychange", () => { if (owns && !document.hidden) refreshPs(); });
     $("#confirm").addEventListener("click", e => { const m = $("#confirm"); if (e.target === m && m._cancel) m._cancel(); });  // backdrop = cancel
 
