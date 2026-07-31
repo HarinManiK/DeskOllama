@@ -5604,8 +5604,8 @@
       const code = btn.closest("pre").querySelector("code"); navigator.clipboard.writeText(code.textContent);
       const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 900);
     });
-    // Escape dismisses whatever is on top: modal, then a drawer, and otherwise stops generation.
-    document.addEventListener("keydown", e => { if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); } });
+    // Escape dismisses whatever is on top: modal, then a drawer, and otherwise stops generation or cancels compose mode.
+    document.addEventListener("keydown", e => { if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); else if (compose) { cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); } } });
     document.addEventListener("visibilitychange", () => { if (owns && !document.hidden) refreshPs(); });
     $("#confirm").addEventListener("click", e => { const m = $("#confirm"); if (e.target === m && m._cancel) m._cancel(); });  // backdrop = cancel
 
