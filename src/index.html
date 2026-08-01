@@ -2417,6 +2417,693 @@
       border-color: #0a66c2;
       color: #0a66c2;
     }
+
+    /* ============ Ollama setup overlay ============
+       Same treatment as #blocked: the app genuinely cannot do anything without Ollama, so
+       covering everything is honest rather than dramatic. Only ever shown when Ollama is
+       absent; a server that is merely stopped is handled by the footer status instead. */
+    #setup {
+      position: fixed;
+      inset: 0;
+      z-index: 210;
+      background: var(--bg);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      text-align: center;
+      padding: 24px
+    }
+
+    #setup.open {
+      display: flex
+    }
+
+    #setup img {
+      width: 72px;
+      height: 72px;
+      object-fit: contain
+    }
+
+    #setup h2 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 600
+    }
+
+    #setup p {
+      margin: 0;
+      max-width: 440px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--muted)
+    }
+
+    .setup-stage {
+      font-size: 13px;
+      color: var(--txt-dim);
+      font-family: var(--mono);
+      min-height: 18px
+    }
+
+    /* Indeterminate on purpose. install.ps1 reports no machine-readable percentage, and a
+       bar that invents one would be a lie told for 700MB. */
+    .setup-bar {
+      width: 280px;
+      height: 4px;
+      border-radius: 3px;
+      background: var(--border);
+      overflow: hidden;
+      display: none
+    }
+
+    .setup-bar.on {
+      display: block
+    }
+
+    .setup-bar i {
+      display: block;
+      width: 38%;
+      height: 100%;
+      border-radius: 3px;
+      background: var(--primary);
+      animation: setupSlide 1.15s ease-in-out infinite
+    }
+
+    /* Once the real percentage is coming through, the bar stops pretending and starts
+       reporting. The sliding animation is only for phases that genuinely cannot be measured,
+       which is the silent installer step. */
+    .setup-bar.exact i {
+      animation: none;
+      width: 0;
+      transition: width .3s
+    }
+
+    .setup-stats {
+      font-size: 12.5px;
+      color: var(--muted);
+      font-family: var(--mono);
+      min-height: 16px
+    }
+
+    .setup-warn {
+      font-size: 12.5px;
+      color: var(--txt-dim);
+      max-width: 420px
+    }
+
+    #setupProgress {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px
+    }
+
+    #setupProgress.on {
+      display: flex
+    }
+
+    @keyframes setupSlide {
+      0% {
+        transform: translateX(-100%)
+      }
+
+      100% {
+        transform: translateX(365%)
+      }
+    }
+
+    #setup .btn.primary {
+      padding: 10px 22px;
+      font-size: 14px
+    }
+
+    .setup-err {
+      color: var(--danger);
+      font-size: 13px;
+      max-width: 440px;
+      line-height: 1.5
+    }
+
+    /* ============ Models nav button ============ */
+    .side-nav {
+      padding: 8px 10px 0;
+      display: flex
+    }
+
+    .nav-models {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--txt-dim)
+    }
+
+    .nav-models:hover {
+      background: var(--sidebar-hover);
+      color: var(--txt)
+    }
+
+    .nav-models.active {
+      background: var(--sidebar-active);
+      color: var(--txt);
+      font-weight: 600
+    }
+
+    /* Sits right of the label, so a download in progress is visible from any chat. */
+    .nav-models .pip {
+      margin-left: auto;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--primary);
+      display: none
+    }
+
+    .nav-models .pip.on {
+      display: inline
+    }
+
+    /* ============ Models page ============
+       Replaces the chat surface inside #main. The sidebar is untouched, so the chat list
+       stays put and a reply streaming in the background keeps streaming. */
+    #modelsPage {
+      flex: 1;
+      min-height: 0;
+      display: none;
+      flex-direction: column
+    }
+
+    #modelsPage.open {
+      display: flex
+    }
+
+    /* The chat surface is hidden rather than unmounted, so a reply streaming into it keeps
+       streaming and coming back costs no re-render. The topbar deliberately stays: theme,
+       settings and the model picker are useful from either view.
+
+       !important earns its keep on the banner alone: its visibility is driven by inline
+       style from several call sites, which an ordinary rule cannot outrank. */
+    #main.models #scroll,
+    #main.models .composer-wrap {
+      display: none
+    }
+
+    #main.models #banner {
+      display: none !important
+    }
+
+    .mp-head {
+      flex: 0 0 auto;
+      padding: 16px 22px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px
+    }
+
+    .mp-tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border-soft)
+    }
+
+    .mp-tab {
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px
+    }
+
+    .mp-tab:hover {
+      color: var(--txt)
+    }
+
+    .mp-tab.on {
+      color: var(--primary);
+      border-bottom-color: var(--primary)
+    }
+
+    .mp-tab .count {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+      margin-left: 5px
+    }
+
+    .mp-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap
+    }
+
+    .mp-search {
+      flex: 1;
+      min-width: 180px;
+      max-width: 340px
+    }
+
+    .mp-filters {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap
+    }
+
+    .mp-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 16px 22px 24px
+    }
+
+    /* Chip groups: a label followed by its options, wrapping as a unit. */
+    .chipgroup {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap
+    }
+
+    .cglabel {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-right: 2px
+    }
+
+    /* Installed tab summary line. */
+    .ihead {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 0 2px 12px;
+      border-bottom: 1px solid var(--border-soft);
+      margin-bottom: 12px
+    }
+
+    .isum {
+      font-weight: 600;
+      font-size: 14px
+    }
+
+    .ipath {
+      flex: 1;
+      min-width: 160px;
+      font-size: 11.5px;
+      color: var(--muted);
+      font-family: var(--mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    /* Library rows: name and description on the left, facts and actions on the right. */
+    .vleft {
+      flex: 1;
+      min-width: 190px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px
+    }
+
+    .vsub {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden
+    }
+
+    .vname .dim {
+      color: var(--muted);
+      font-weight: 500
+    }
+
+    /* ---- expandable model rows ---- */
+    .mrow {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      cursor: default
+    }
+
+    .mhead {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      cursor: pointer;
+      user-select: none
+    }
+
+    .mrow.open .mhead {
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-soft)
+    }
+
+    .chev {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 11px;
+      width: 12px
+    }
+
+    .mhead:hover .chev {
+      color: var(--txt)
+    }
+
+    .badge.cloud {
+      border-color: #38bdf8;
+      color: #38bdf8
+    }
+
+    .mdetail {
+      padding-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px
+    }
+
+    .tgroup {
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .tgh {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em
+    }
+
+    .tgroup>.btn {
+      align-self: flex-start;
+      padding: 5px 11px;
+      font-size: 12.5px
+    }
+
+    .trow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: var(--panel-2)
+    }
+
+    .trow.have {
+      outline: 1px solid var(--good)
+    }
+
+    .tname {
+      flex: 1;
+      min-width: 170px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      word-break: break-all
+    }
+
+    .tcloud {
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic
+    }
+
+    .badges {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--txt-dim);
+      white-space: nowrap
+    }
+
+    .badge.cap {
+      border-color: var(--primary);
+      color: var(--primary)
+    }
+
+    .badge.size {
+      font-family: var(--mono)
+    }
+
+    .badge.upd {
+      border-color: #eab308;
+      color: #eab308
+    }
+
+    .mp-note {
+      font-size: 12.5px;
+      color: var(--muted);
+      padding: 0 2px 10px
+    }
+
+    .mp-empty {
+      padding: 48px 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6
+    }
+
+    .mp-empty .sub {
+      font-size: 12.5px;
+      margin-top: 8px
+    }
+
+    .mp-empty button {
+      margin-top: 14px
+    }
+
+    /* ---- installed rows ---- */
+    .irow {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 15px;
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px
+    }
+
+    .irow .ibody {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .irow .iname {
+      font-weight: 600;
+      font-size: 14.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap
+    }
+
+    .irow .iacts {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap
+    }
+
+    .irow .btn {
+      padding: 6px 12px;
+      font-size: 12.5px
+    }
+
+    .btn.danger {
+      color: var(--danger);
+      border-color: var(--danger)
+    }
+
+    .btn.danger:hover {
+      background: var(--danger);
+      color: #fff
+    }
+
+    /* Details drop down inside the row rather than opening a dialog: it is reference
+       material you read next to the model, not a decision that needs a modal. */
+    .idetails {
+      flex: 1 0 100%;
+      border-top: 1px solid var(--border-soft);
+      margin-top: 4px;
+      padding-top: 10px;
+      display: none;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 8px 18px
+    }
+
+    .idetails.on {
+      display: grid
+    }
+
+    .idetails div {
+      font-size: 12.5px;
+      color: var(--muted);
+      min-width: 0
+    }
+
+    .idetails b {
+      color: var(--txt-dim);
+      font-weight: 500
+    }
+
+    .idetails span {
+      font-family: var(--mono);
+      color: var(--txt);
+      word-break: break-word
+    }
+
+    /* ---- variants ---- */
+    .mp-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      padding: 4px 0
+    }
+
+    .mp-back:hover {
+      color: var(--txt)
+    }
+
+    .vhead {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px
+    }
+
+    .vhead h3 {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 700
+    }
+
+    .vhead p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 640px
+    }
+
+    .vrow {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px
+    }
+
+    .vrow .vname {
+      font-family: var(--mono);
+      font-size: 13.5px;
+      font-weight: 600;
+      flex: 1;
+      min-width: 160px;
+      word-break: break-all
+    }
+
+    .vrow.have {
+      border-color: var(--good)
+    }
+
+    /* ---- download progress ---- */
+    .dl {
+      flex: 1 0 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px
+    }
+
+    .dlbar {
+      flex: 1;
+      height: 5px;
+      border-radius: 3px;
+      background: var(--border);
+      overflow: hidden;
+      min-width: 80px
+    }
+
+    .dlbar i {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: 3px;
+      background: var(--primary);
+      transition: width .25s
+    }
+
+    .dltext {
+      font-size: 11.5px;
+      color: var(--muted);
+      font-family: var(--mono);
+      white-space: nowrap
+    }
+
+    /* Topbar pill, so a background download is visible while you carry on chatting. */
+    .dlpill {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 11.5px;
+      font-family: var(--mono);
+      color: var(--txt-dim);
+      cursor: pointer;
+      max-width: 260px;
+      flex: 0 0 auto
+    }
+
+    .dlpill.on {
+      display: flex
+    }
+
+    .dlpill:hover {
+      border-color: var(--primary)
+    }
+
+    .dlpill .nm {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .dlpill .dlbar {
+      width: 54px;
+      flex: 0 0 auto;
+      min-width: 0
+    }
   </style>
 </head>
 
@@ -2426,6 +3113,13 @@
     <div class="brand-header">
       <img src="assets/DeskOllama-logo-nobg.png" alt="DeskOllama" class="brand-logo-img">
       <span class="brand-title"><span class="brand-desk">Desk</span><span class="brand-ollama">Ollama</span></span>
+    </div>
+    <div class="side-nav">
+      <button class="nav-models" id="navModels" title="Browse and manage models"><svg width="16" height="16"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2 2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+        </svg>Models<span class="pip" id="navModelsPip"></span></button>
     </div>
     <div class="side-top">
       <button class="newchat" id="newChat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -2462,10 +3156,15 @@
           <path d="M9 4v16" />
         </svg></button>
       <select class="modelsel" id="model" title="Model"></select>
+      <button class="btn primary" id="getModelBtn" style="display:none;padding:6px 14px;font-size:13px">Get a
+        model</button>
       <span class="loadchip" id="loadChip"></span>
       <button class="loadbtn" id="loadBtn"></button>
       <span class="capinfo" id="capinfo"></span>
       <span class="grow"></span>
+      <button class="dlpill" id="dlPill" title="Downloading a model. Click to open Models"><span class="nm"
+          id="dlPillName"></span><span class="dlbar"><i id="dlPillBar"></i></span><span
+          id="dlPillPct"></span></button>
       <button class="tb-btn" id="ctxBtn" data-tip="Show context (view and edit this branch's messages)"
         title="Context"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="2">
@@ -2526,6 +3225,21 @@
         </div>
       </div>
       <div class="foot-note" id="tipDisplay"></div>
+    </div>
+
+    <div id="modelsPage">
+      <div class="mp-head">
+        <div class="mp-tabs">
+          <button class="mp-tab on" id="tabInstalled" data-tab="installed">Installed<span class="count"
+              id="installedCount"></span></button>
+          <button class="mp-tab" id="tabLibrary" data-tab="library">Library</button>
+        </div>
+        <div class="mp-tools" id="mpTools">
+          <input class="mp-search" id="mpSearch" placeholder="Search models…">
+          <div class="mp-filters" id="mpFilters"></div>
+        </div>
+      </div>
+      <div class="mp-body" id="mpBody"></div>
     </div>
   </div>
 
@@ -2629,6 +3343,20 @@
         id="ctxCancel">Cancel</button></div>
   </aside>
 
+  <div id="setup">
+    <img src="assets/DeskOllama-logo-nobg.png" alt="">
+    <h2 id="setupTitle">DeskOllama needs Ollama to run AI models on your computer.</h2>
+    <p id="setupMsg">This is a one-time setup.</p>
+    <button class="btn primary" id="setupBtn">Install Ollama</button>
+    <div id="setupProgress">
+      <div class="setup-stage" id="setupStage">Installing…</div>
+      <div class="setup-bar" id="setupBar"><i></i></div>
+      <div class="setup-stats" id="setupStats"></div>
+      <div class="setup-warn">This can take a few minutes. Please don't close the app.</div>
+    </div>
+    <div class="setup-err" id="setupErr"></div>
+  </div>
+
   <div id="blocked">
     <h2>Already open in another tab</h2>
     <p>Local Harness runs in one tab at a time, so the two can't fight over which model is loaded.<br><br>Switch to the
@@ -2693,8 +3421,8 @@
               </div>
               <div class="guide-param-item">
                 <strong>temperature</strong>
-                <p>Controls randomness. Low values (0.1–0.3) make outputs deterministic and focused; high values
-                  (0.7–1.0) increase creativity and variety.</p>
+                <p>Controls randomness. Low values (0.1 to 0.3) make outputs deterministic and focused; high values
+                  (0.7 to 1.0) increase creativity and variety.</p>
               </div>
               <div class="guide-param-item">
                 <strong>top_p (Nucleus Sampling)</strong>
@@ -3201,6 +3929,106 @@
     let modelCache = []; let loadedModels = new Map(); let loadingName = null; let ejectingName = null;
     const base = () => state.settings.baseUrl;
 
+    /* ---- transport ----
+       Everything talks to Ollama through here. Under the desktop shell it goes out through
+       Rust, which has no origin and so is never subject to Ollama's CORS allowlist. On
+       Windows the webview's `http://tauri.localhost` matches none of Ollama's defaults, so a
+       direct fetch is blocked and the app looks offline beside a healthy server.
+
+       The plain-fetch branch is for running src/ in a browser during development, where the
+       origin is `http://localhost:<port>` and Ollama does allow it. Both branches hand back
+       the same shape, and streaming hands both to one line callback, so the delicate parsing
+       above them exists once. */
+    async function oreq(path, opts) {
+      const o = opts || {};
+      const url = base() + path;
+      const method = o.method || "GET";
+      if (hasTauri()) {
+        const r = await invoke("ollama_fetch", {
+          url, method,
+          body: o.body === undefined ? null : JSON.stringify(o.body),
+          timeoutMs: o.timeout || null
+        });
+        return { ok: r.ok, status: r.status, body: r.body, json: () => JSON.parse(r.body) };
+      }
+      const init = { method };
+      if (o.body !== undefined) {
+        init.headers = { "Content-Type": "application/json" };
+        init.body = JSON.stringify(o.body);
+      }
+      let timer = null;
+      if (o.timeout) {
+        const ctl = new AbortController();
+        init.signal = ctl.signal;
+        timer = setTimeout(() => ctl.abort(), o.timeout);
+      }
+      try {
+        const r = await fetch(url, init);
+        const body = await r.text();
+        return { ok: r.ok, status: r.status, body, json: () => JSON.parse(body) };
+      } finally { if (timer) clearTimeout(timer); }
+    }
+    /* Streams an NDJSON endpoint. `onLine` receives each parsed object; `done` resolves once
+       with {ok} | {aborted} | {error, status?, body?}, never rejects, so callers branch on a
+       value instead of on exception types. */
+    function ostream(path, body, onLine) {
+      const url = base() + path;
+      let abort = () => { };
+      const done = new Promise(resolve => {
+        const feed = line => { let o; try { o = JSON.parse(line); } catch { return; } onLine(o); };
+        const Chan = hasTauri() && tauriApi().core && tauriApi().core.Channel;
+        if (Chan) {
+          const id = uid();
+          let ch;
+          // A missing or changed Channel export would otherwise leave this promise unsettled,
+          // and an unsettled stream is a chat that hangs with no error. Fail loudly instead.
+          try { ch = new Chan(); }
+          catch (e) { resolve({ error: "Streaming is unavailable: " + String((e && e.message) || e) }); return; }
+          ch.onmessage = m => {
+            if (!m) return;
+            if (m.kind === "line") feed(m.line);
+            else if (m.kind === "end") resolve({ ok: true });
+            else if (m.kind === "aborted") resolve({ aborted: true });
+            else if (m.kind === "http") resolve({ error: `HTTP ${m.status} ${String(m.body || "").slice(0, 180)}`, status: m.status, body: String(m.body || "") });
+            else if (m.kind === "error") resolve({ error: m.message });
+          };
+          abort = () => { invoke("ollama_abort", { id }).catch(() => { }); };
+          invoke("ollama_stream", { id, url, body: JSON.stringify(body), onEvent: ch })
+            .catch(e => resolve({ error: String((e && e.message) || e) }));
+          return;
+        }
+        const ctl = new AbortController();
+        abort = () => ctl.abort();
+        (async () => {
+          try {
+            const r = await fetch(url, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body), signal: ctl.signal
+            });
+            if (!r.ok) {
+              const text = (await r.text()) || "";
+              resolve({ error: `HTTP ${r.status} ${text.slice(0, 180)}`, status: r.status, body: text });
+              return;
+            }
+            const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+            while (true) {
+              const { value, done: fin } = await reader.read(); if (fin) break;
+              buf += dec.decode(value, { stream: true }); let nl;
+              while ((nl = buf.indexOf("\n")) >= 0) {
+                const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+                if (line) feed(line);
+              }
+            }
+            if (buf.trim()) feed(buf.trim());
+            resolve({ ok: true });
+          } catch (e) {
+            resolve(e && e.name === "AbortError" ? { aborted: true } : { error: String((e && e.message) || e) });
+          }
+        })();
+      });
+      return { done, abort: () => abort() };
+    }
+
     // --- input normalizers / validators (Ollama edge cases) ---
     function normalizeBase(u) { let s = (u || "").trim(); if (!s) return "http://localhost:11434"; if (!/^https?:\/\//i.test(s)) s = "http://" + s; return s.replace(/\/+$/, ""); }
     function parseKeepAlive(raw) {
@@ -3276,12 +4104,29 @@
       }
       return 0;
     }
+    /* Dense or mixture-of-experts, and only when the model actually says so. Expert counts sit
+       in model_info under the architecture's own namespace exactly as the context and vision
+       keys do, so this is the same suffix scan.
+
+       Returns "" when there is no model_info to read, and the badge is then simply absent.
+       That is the whole point: the marketplace pages do not publish this for most models, and
+       a guessed architecture is worse than a missing one. */
+    function archFromModelInfo(info) {
+      if (!info || !Object.keys(info).length) return "";
+      for (const k of Object.keys(info)) {
+        if (!k.endsWith(".expert_count")) continue;
+        const n = Number(info[k]);
+        if (Number.isFinite(n) && n > 1) return "moe";
+      }
+      return "dense";
+    }
     // Everything worth keeping from one /api/show, tied to the exact blob it describes.
     function metaFromShow(d, digest) {
       return {
         digest,
         capabilities: Array.isArray(d.capabilities) ? d.capabilities : [],
         details: (d && d.details) || {},
+        moe: archFromModelInfo(d && d.model_info),
         ctx: ctxFromModelInfo(d && d.model_info, ((d && d.details) || {}).family),
         imgMax: visionParam(d && d.model_info, ".vision.longest_edge"),
         imgPatch: visionParam(d && d.model_info, ".vision.patch_size"),
@@ -3310,12 +4155,9 @@
       if (showInFlight.has(name)) return showInFlight.get(name);
       const p = (async () => {
         try {
-          const r = await fetch(base() + "/api/show", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: name })
-          });
+          const r = await oreq("/api/show", { method: "POST", body: { model: name } });
           if (!r.ok) return null;                                  // silent: the /api/tags data stands
-          const meta = metaFromShow(await r.json(), entry.digest);
+          const meta = metaFromShow(r.json(), entry.digest);
           store[name] = meta; save();
           if (applyMeta(name, meta)) reconcileModelLimits();         // a corrected window feeds num_ctx
           return meta;
@@ -3355,7 +4197,20 @@
       await Promise.all(Array.from({ length: Math.min(SHOW_CONCURRENCY, rest.length) }, worker));
     }
 
+    /* An empty dropdown is a control that cannot do anything, so with nothing installed it is
+       replaced by the one action that helps. The load chip and Load button go with it: there
+       is no model to load. */
+    function updateEmptyModelUI() {
+      if (!els || !els.model) return;
+      const empty = !modelCache.length;
+      const btn = $("#getModelBtn");
+      if (btn) btn.style.display = empty ? "" : "none";
+      els.model.style.display = empty ? "none" : "";
+      els.loadChip.style.display = empty ? "none" : "";
+      els.loadBtn.style.display = empty ? "none" : "";
+    }
     function updateModelOptions() {
+      updateEmptyModelUI();
       if (!els || !els.model || !modelCache.length) return;
       const c = currentConv();
       const inHistory = c ? Object.values(c.nodes || {}).filter(nodeHasImage).length : 0;
@@ -3376,8 +4231,8 @@
 
     async function loadModels() {
       try {
-        const r = await fetch(base() + "/api/tags"); if (!r.ok) throw new Error("HTTP " + r.status);
-        const data = await r.json();
+        const r = await oreq("/api/tags"); if (!r.ok) throw new Error("HTTP " + r.status);
+        const data = r.json();
         modelCache = (data.models || []).slice().sort((a, b) => a.name.localeCompare(b.name));
         // Correct what we already know before anything reads it. This also re-applies after a
         // reconnect, where loadModels() rebuilds modelCache from scratch.
@@ -3502,14 +4357,18 @@
       ring.style.display = "";
     }
     function setConn(ok, txt) { els.condot.className = "dot " + (ok ? "ok" : "bad"); els.constat.textContent = txt; }
+    /* No longer any mention of OLLAMA_ORIGINS: requests go out through Rust, which has no
+       origin, so the CORS advice this used to give was both obsolete and misleading. A
+       failure here now means the server really is unreachable. */
     function showCorsHelp(e) {
       els.banner.style.display = "block";
-      els.banner.innerHTML = `Can't reach Ollama at <code>${esc(base())}</code> (${esc(e.message)}). Allow the browser origin, then restart Ollama:<br>PowerShell → <code>setx OLLAMA_ORIGINS "*"</code>, then quit &amp; reopen Ollama.`;
+      els.banner.innerHTML = `Can't reach Ollama at <code>${esc(base())}</code> (${esc(e.message)}). `
+        + `Check that Ollama is running, or that the base URL in Settings is right.`;
     }
     async function refreshPs() {
       try {
-        const r = await fetch(base() + "/api/ps"); if (!r.ok) throw new Error("HTTP " + r.status);
-        const d = await r.json(); loadedModels = new Map((d.models || []).map(m => [m.name, m]));
+        const r = await oreq("/api/ps"); if (!r.ok) throw new Error("HTTP " + r.status);
+        const d = r.json(); loadedModels = new Map((d.models || []).map(m => [m.name, m]));
         if (els.condot.classList.contains("bad")) { els.banner.style.display = "none"; await loadModels(); return; } // recovered
       } catch (e) { setConn(false, "offline"); }
       updateLoadUI();
@@ -3561,7 +4420,13 @@
       const cur = els.model.value;
       if (state.settings.oneAtOnce && loadedModels.has(cur) && otherLoaded(cur).length) await evictOthers(cur);
     }
-    let loadPromise = null, loadAbort = null;
+    /* `loadGen` replaces what used to be an AbortController.
+       A native request cannot be cancelled mid-flight, and it does not need to be: cancelling
+       a load has always really meant "stop waiting for it and evict it", which is the
+       keep_alive:0 below. The counter is how a reply that lands after the cancel is
+       recognised as stale and ignored. */
+    let loadPromise = null, loadGen = 0;
+    const evictNow = name => oreq("/api/generate", { method: "POST", body: { model: name, keep_alive: 0, stream: false } }).catch(() => { });
     async function loadModel(name) {
       if (!name) return false;
       if (loadingName === name && loadPromise) return loadPromise;   // already on it
@@ -3572,37 +4437,26 @@
       const p = (async () => {
         cancelMeasure();   // the model is about to change under any reading in flight
         if (state.settings.oneAtOnce) await evictOthers(name);
-        loadingName = name; loadAbort = new AbortController(); updateLoadUI(); renderEmpty();
-        let loadedOk = false;
+        const gen = ++loadGen;
+        loadingName = name; updateLoadUI(); renderEmpty();
         try {
-          const r = await fetch(base() + "/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(loadBody(name)), signal: loadAbort.signal });
-          if (!r.ok) throw new Error("HTTP " + r.status + " " + (await r.text()).slice(0, 180));
-          await r.json();
-
-          if (loadAbort && loadAbort.signal.aborted) {
-            loadedOk = false;
-          } else if (state.settings.oneAtOnce && els.model.value !== name) {
-            // Model changed while this load was in-flight; immediately eject it
-            fetch(base() + "/api/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: name, keep_alive: 0, stream: false })
-            }).catch(() => { });
-            loadedOk = false;
-          } else {
-            els.banner.style.display = "none";
-            loadedOk = true;
+          const r = await oreq("/api/generate", { method: "POST", body: loadBody(name) });
+          if (gen !== loadGen) return false;                  // cancelled while in flight
+          if (!r.ok) throw new Error("HTTP " + r.status + " " + r.body.slice(0, 180));
+          if (state.settings.oneAtOnce && els.model.value !== name) {
+            evictNow(name);   // model changed under us; don't leave it resident
+            return false;
           }
-          return loadedOk;
+          els.banner.style.display = "none";
+          return true;
         } catch (e) {
-          if (e.name !== "AbortError") {
+          if (gen === loadGen) {
             els.banner.style.display = "block";
             els.banner.innerHTML = `Failed to load <code>${esc(name)}</code>: ${esc(e.message)}`;
           }
           return false;
         } finally {
           if (loadingName === name) loadingName = null;
-          if (loadAbort && loadAbort.signal.aborted) loadAbort = null;
           if (loadPromise === p) loadPromise = null;   // never clear a newer load's handle
           await refreshPs(); safeFocusInput();
           drainQueue();
@@ -3612,23 +4466,13 @@
     }
     let loadCancelledByUser = false;
     function cancelLoad() {
-      if (!loadAbort && !loadingName) return;
+      if (!loadingName) return;
       loadCancelledByUser = true;
       const cancelledName = loadingName;
-      if (loadAbort) {
-        try { loadAbort.abort(); } catch (e) { }
-      }
+      loadGen++;               // anything still in flight is now stale
       loadingName = null;
-      loadAbort = null;
       halt("Paused: loading was cancelled.");
-      if (cancelledName) {
-        // Immediately tell Ollama to evict/unload cancelled model from RAM/VRAM
-        fetch(base() + "/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: cancelledName, keep_alive: 0, stream: false })
-        }).catch(() => { });
-      }
+      if (cancelledName) evictNow(cancelledName);   // free the VRAM it may already hold
     }
     // Resolves true once `name` is resident. A load already in flight is awaited rather than
     // refused, so sending while boot auto-load is still running waits for it instead of
@@ -3650,10 +4494,10 @@
       if (!name || ejectingName) return;
       ejectingName = name; updateLoadUI();
       try {
-        await fetch(base() + "/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: name, keep_alive: 0, stream: false }) });
+        await oreq("/api/generate", { method: "POST", body: { model: name, keep_alive: 0, stream: false } });
         // The request returns before VRAM is freed. Keep the spinner until /api/ps confirms it's gone.
         for (let i = 0; i < 40; i++) {
-          const r = await fetch(base() + "/api/ps"); const d = await r.json();
+          const d = (await oreq("/api/ps")).json();
           loadedModels = new Map((d.models || []).map(m => [m.name, m]));
           if (!loadedModels.has(name)) break;
           await new Promise(res => setTimeout(res, 250));
@@ -3698,7 +4542,10 @@
       for (const c of sortedConvs()) {
         const timeText = formatConvTime(c);
         const fullTooltip = `${c.title}\n${timeText}`;
-        const el = document.createElement("div"); el.className = "conv" + (c.id === state.currentId ? " active" : "");
+        // Nothing is highlighted while the Models page is up: the chat is still loaded behind
+        // it, but it is not what you are looking at, and showing it as current is a lie.
+        const el = document.createElement("div");
+        el.className = "conv" + (c.id === state.currentId && !modelsOpen ? " active" : "");
         el.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:0 0 auto"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><div class="conv-body"><span class="title" title="${escAttr(fullTooltip)}">${esc(c.title)}</span><span class="meta">${esc(timeText)}</span></div><span class="menu"><button data-act="rename" title="Rename"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button data-act="delete" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></span>`;
         el.addEventListener("click", ev => {
           const act = ev.target.closest("[data-act]");
@@ -4102,10 +4949,20 @@
     const isGifFile = f => (f.type || "").toLowerCase() === "image/gif" || /\.gif$/i.test(f.name || "");
     const isImageFile = f => isGifFile(f) ? false : ((f.type || "").startsWith("image/") ? !/svg/i.test(f.type) : IMAGE_EXT.test(f.name));
     const isTextFile = f => isGifFile(f) ? false : ((f.type || "").startsWith("text/") || TEXT_EXT.test(f.name) || /^(dockerfile|makefile|licen[cs]e|readme)$/i.test(f.name));
+    /* Decimal units, and it goes up to TB.
+
+       It stopped at MB before, which was fine when the only sizes on screen were attachments
+       but reads as nonsense for models: a 1.3 GB download announced itself as "1239.8 MB".
+       Decimal rather than binary so our figures agree with the ones ollama.com prints in the
+       very same list. Showing "1.2 GB" beside their "1.3GB" for one identical file invites a
+       bug report. The difference is invisible at attachment sizes. */
     function fmtBytes(n) {
-      if (n < 1024) return n + " B";
-      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
-      return (n / (1024 * 1024)).toFixed(1) + " MB";
+      const v = Number(n) || 0;
+      if (v < 1000) return Math.round(v) + " B";
+      const units = ["KB", "MB", "GB", "TB"];
+      let x = v / 1000, i = 0;
+      while (x >= 1000 && i < units.length - 1) { x /= 1000; i++; }
+      return (x < 10 ? x.toFixed(1) : Math.round(x)) + " " + units[i];
     }
     // The fence language for an inlined text file. Only a hint to the model, so an unknown
     // extension is better left blank than guessed at.
@@ -4148,7 +5005,7 @@
       if (!want) return cap > 0 ? cap : 0;         // Original still yields to a published ceiling
       return cap > 0 ? Math.min(want, cap) : want; // and always beats a larger setting
     }
-    /* What `pixels` would cost on this model, for the settings hint alone — the one place a
+    /* What `pixels` would cost on this model, for the settings hint alone (the one place a
        number is needed before any image exists to measure.
 
        Only meaningful for a ViT that consumes patches of the image as given, where the count is
@@ -4533,10 +5390,13 @@
       const fmt = resolveSetting("format", c.model); if (fmt) p.format = fmt;
       return p;
     }
-    let measureTimer = null, measureAbort = null;
+    /* Same reasoning as loadGen: a reading cannot be recalled once sent, so cancelling means
+       "whatever comes back is no longer about the thing on screen". Bumping the counter is
+       what makes a late answer harmless. */
+    let measureTimer = null, measureGen = 0;
     function cancelMeasure() {
       if (measureTimer) { clearTimeout(measureTimer); measureTimer = null; }
-      if (measureAbort) { measureAbort.abort(); measureAbort = null; }
+      measureGen++;
     }
     // A reading is worth nothing next to actual work, so it only runs in genuinely idle time.
     function measureIdle() {
@@ -4583,14 +5443,12 @@
       const node = unmeasuredTail(c); if (!node) return;
       const payload = { ...(await chatPayload(c, true)), stream: false };
       payload.options = { ...payload.options, num_predict: 1 };
-      measureAbort = new AbortController();
+      const gen = ++measureGen;
       try {
-        const r = await fetch(base() + "/api/chat", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload), signal: measureAbort.signal
-        });
+        const r = await oreq("/api/chat", { method: "POST", body: payload });
+        if (gen !== measureGen) return;        // superseded while we were asking
         if (!r.ok) return;
-        const n = (await r.json()).prompt_eval_count;
+        const n = r.json().prompt_eval_count;
         if (!Number.isFinite(n) || n <= 0) return;
         if (node.id === "\0draft") {
           // Keyed to the draft that was measured, so a file removed while the request was in
@@ -4600,7 +5458,7 @@
           draftCtx = n; draftCtxKey = key;
           /* What the attachments themselves cost: the measured total minus what the branch held
              without them. Measured rather than derived, which is the only way to get a true number
-             across architectures — a dynamic-resolution ViT prices by area, a tiling model by tile
+             across architectures. A dynamic-resolution ViT prices by area, a tiling model by tile
              count, and a fixed-input model charges the same however many pixels it is handed.
              pathUsage is the floor here, so this can read slightly high on a branch whose last
              reply was never measured; it is marked approximate for that reason. */
@@ -4613,7 +5471,6 @@
         updateCtxRing();
         if ($("#ctxeditor").classList.contains("open")) renderCtxList();
       } catch { /* silent: the ring simply stays a floor */ }
-      finally { measureAbort = null; }
     }
 
     // Generates a reply into `c`, which is not necessarily the chat on screen: the queue keeps
@@ -4634,7 +5491,19 @@
       live = { convId: c.id, dom, assistant };
       let status = "ok";
       cancelMeasure();   // a reading in flight is about to be out of date anyway
-      controller = new AbortController(); setBusy(true); updateCtxRing(); let stats = null;
+      /* Stands in for the AbortController this used to be, so requestStop(), deleteConv() and
+         loseOwnership() keep calling controller.abort() unchanged.
+
+         `aborted` is what closes the window between this object existing and the stream being
+         attached: the payload is awaited first, so a Stop pressed in that gap would otherwise
+         be dropped and the reply would stream on regardless. Recording it means the stream is
+         cancelled the instant it attaches, or never started at all. */
+      controller = {
+        onAbort: null, aborted: false,
+        abort() { this.aborted = true; if (this.onAbort) this.onAbort(); },
+        attach(fn) { this.onAbort = fn; if (this.aborted) fn(); }
+      };
+      setBusy(true); updateCtxRing(); let stats = null;
       const commit = () => {
         const an = addNode(c, parentId, "assistant", assistant.content, assistant.thinking, assistant.meta);
         // Ollama's raw prompt/output token counts, plus how long generation itself took (ns).
@@ -4646,57 +5515,58 @@
         touch(c); save();
         attachActions(c, an, live.dom, nodeChildren(c, an.parentId)); return an;
       };
+      // Each streamed line, whichever transport delivered it.
+      const onLine = o => {
+        if (o.message) {
+          const d = live.dom;
+          if (o.message.thinking) { assistant.thinking += o.message.thinking; d.think.style.display = ""; d.think.open = true; d.tbody.textContent = assistant.thinking; d.tbody.classList.add("think-live"); }
+          if (o.message.content) { assistant.content += o.message.content; d.tbody.classList.remove("think-live"); d.content.innerHTML = md(assistant.content); }
+          if (autostick) scrollBottom();
+        }
+        if (o.done) { stats = o; if (assistant.thinking) live.dom.think.open = false; }
+      };
       try {
-        const post = () => fetch(base() + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal });
-        let r = await post();
-        if (!r.ok) {
-          const body = (await r.text()).slice(0, 300);
-          // Ollama answers `think` on a model that genuinely cannot think with
-          // 400 {"error":"\"name\" does not support thinking"}. We only sent it because the manual
-          // override said to, and the refusal arrives before a single token streams, so nothing is
-          // committed and there is nothing to unpick: drop the override and ask again without it.
-          // One retry only, so a repeat failure surfaces as an ordinary error.
-          if (r.status === 400 && /does not support thinking/i.test(body)
-            && payload.think !== undefined && !modelCaps(c.model).includes("thinking")) {
-            clearForceThinking(c.model);
-            delete payload.think;
-            r = await post();
-            if (r.ok) {
-              els.banner.style.display = "block";
-              els.banner.innerHTML = `<code>${esc(c.model)}</code> does not support thinking after all, so the forced toggle has been switched off for it and this reply was generated without it.`;
-            }
-          }
-          if (!r.ok) throw new Error("HTTP " + r.status + " " + body.slice(0, 180));
-        }
-        const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
-        while (true) {
-          const { value, done } = await reader.read(); if (done) break;
-          buf += dec.decode(value, { stream: true }); let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (!line) continue;
-            let o; try { o = JSON.parse(line) } catch { continue }
-            if (o.message) {
-              const d = live.dom;
-              if (o.message.thinking) { assistant.thinking += o.message.thinking; d.think.style.display = ""; d.think.open = true; d.tbody.textContent = assistant.thinking; d.tbody.classList.add("think-live"); }
-              if (o.message.content) { assistant.content += o.message.content; d.tbody.classList.remove("think-live"); d.content.innerHTML = md(assistant.content); }
-              if (autostick) scrollBottom();
-            }
-            if (o.done) { stats = o; if (assistant.thinking) live.dom.think.open = false; }
+        const post = () => {
+          if (controller.aborted) return Promise.resolve({ aborted: true });
+          const s = ostream("/api/chat", payload, onLine);
+          controller.attach(s.abort);        // Esc and Stop reach the stream through here
+          return s.done;
+        };
+        let res = await post();
+        // Ollama answers `think` on a model that genuinely cannot think with
+        // 400 {"error":"\"name\" does not support thinking"}. We only sent it because the manual
+        // override said to, and the refusal arrives before a single token streams, so nothing is
+        // committed and there is nothing to unpick: drop the override and ask again without it.
+        // One retry only, so a repeat failure surfaces as an ordinary error.
+        if (res.status === 400 && /does not support thinking/i.test(res.body || "")
+          && payload.think !== undefined && !modelCaps(c.model).includes("thinking")) {
+          clearForceThinking(c.model);
+          delete payload.think;
+          res = await post();
+          if (res.ok) {
+            els.banner.style.display = "block";
+            els.banner.innerHTML = `<code>${esc(c.model)}</code> does not support thinking after all, so the forced toggle has been switched off for it and this reply was generated without it.`;
           }
         }
         live.dom.content.classList.remove("cursor");
-        if (stats && stats.eval_count) { assistant.meta = ""; }
-        commit();
-      } catch (err) {
-        live.dom.content.classList.remove("cursor");
-        if (err.name === "AbortError") {
+        if (res.aborted) {
           status = "aborted";
           if (assistant.content || assistant.thinking) { commit(); live.dom.content.innerHTML = md(assistant.content) + `<p style="color:var(--muted);font-size:13px;margin-top:6px">⏹ stopped</p>`; }
           else live.dom.row.remove();
-        } else if (assistant.content || assistant.thinking) {
+        } else if (res.error) {
           status = "error";
-          commit(); live.dom.content.innerHTML = md(assistant.content) + `<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(err.message)}</p>`;
-        } else { status = "error"; live.dom.content.innerHTML = `<p style="color:var(--danger)">Error: ${esc(err.message)}</p>`; }
+          if (assistant.content || assistant.thinking) { commit(); live.dom.content.innerHTML = md(assistant.content) + `<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(res.error)}</p>`; }
+          else live.dom.content.innerHTML = `<p style="color:var(--danger)">Error: ${esc(res.error)}</p>`;
+        } else {
+          if (stats && stats.eval_count) { assistant.meta = ""; }
+          commit();
+        }
+      } catch (err) {
+        live.dom.content.classList.remove("cursor");
+        status = "error";
+        const msg = String((err && err.message) || err);
+        if (assistant.content || assistant.thinking) { commit(); live.dom.content.innerHTML = md(assistant.content) + `<p style="color:var(--danger);font-size:13px;margin-top:6px">Error: ${esc(msg)}</p>`; }
+        else live.dom.content.innerHTML = `<p style="color:var(--danger)">Error: ${esc(msg)}</p>`;
       } finally { live = null; controller = null; setBusy(false); renderSidebar(); refreshPs(); updateCtxRing(); safeFocusInput(); }
       // A stop the user asked for winds the prompt back into the composer. An abort from losing
       // the tab lock does not: that tab is parking, and there is nobody to hand it back to.
@@ -5461,7 +6331,7 @@
       // Nothing was committed, so there is nothing else to undo. With no pending changes left,
       // the next close goes straight through.
       if (choice === "cancel" || choice == null) { fillSettingsForm(); return; }
-      commitRows(rows, model); doClose(); updateCtxRing(); syncLauncher();
+      commitRows(rows, model); doClose(); updateCtxRing(); syncLauncher(); syncClosePolicy();
       // If the default model was changed, switch the current chat's model picker to it
       const newDefault = state.settings.defaultModel;
       if (newDefault && newDefault !== model) {
@@ -5499,7 +6369,7 @@
       if (choice === "cancel" || choice == null) return;
       applyFactoryReset();
       fillSettingsForm();       // the panel is already open, just repopulate it
-      updateCap(); updateCtxRing(); syncLauncher();
+      updateCap(); updateCtxRing(); syncLauncher(); syncClosePolicy();
       await loadModels();
       // A reset cleared the answer, so the default-model question is asked again exactly as it is
       // on a first run. Saying yes here loads it straight away rather than waiting for a restart.
@@ -5585,7 +6455,7 @@
           badge.dataset.tip = `This turn added ${(tail.ctx - prevCtx).toLocaleString()} tokens.\nTotal after it: ${tail.ctx.toLocaleString()}.`;
           prevCtx = tail.ctx;
         } else {
-          badge.textContent = "—";
+          badge.textContent = "-";
           badge.classList.add("stale");
           badge.dataset.tip = "Not measured yet. Send a message in this branch and it will be counted.";
         }
@@ -5814,7 +6684,7 @@
         cycleModel();
         return;
       }
-      if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); else if (compose) { cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); } }
+      if (e.key === "Escape") { const m = $("#confirm"); if (lightboxOpen()) { closeLightbox(); } else if (m.classList.contains("open")) { if (m._cancel) m._cancel(); } else if ($("#ctxeditor").classList.contains("open")) closeContext(); else if (els.settings.classList.contains("open")) closeSettings(); else if (controller || sending) requestStop(); else if (loadingName) cancelLoad(); else if (compose) { cancelCompose(); clearInput(); save(); openConversation(); drainQueue(); } else if (modelsOpen) closeModels(); }
     });
     document.addEventListener("visibilitychange", () => { if (owns && !document.hidden) refreshPs(); });
     $("#confirm").addEventListener("click", e => { const m = $("#confirm"); if (e.target === m && m._cancel) m._cancel(); });  // backdrop = cancel
@@ -5900,7 +6770,7 @@
     // still no dead end: its lock goes stale after STALE_MS and the next tab claims it.
     function loseOwnership() {
       if (controller) controller.abort();
-      if (loadAbort) loadAbort.abort();
+      cancelLoad();
       showBlocked();
     }
 
@@ -5914,16 +6784,13 @@
         // keepalive so the request survives the page going away; options must match the loaded
         // runner or Ollama reloads the model under defaults just to expire it.
         try {
-          fetch(base() + "/api/generate", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(loadBody(name, CLOSE_GRACE_S)), keepalive: true
-          });
+          oreq("/api/generate", { method: "POST", body: loadBody(name, CLOSE_GRACE_S) });
         } catch { }
       }
     }
     async function reassertKeepAlive() {
       for (const name of loadedModels.keys()) {
-        try { await fetch(base() + "/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(loadBody(name)) }); } catch { }
+        try { await oreq("/api/generate", { method: "POST", body: loadBody(name) }); } catch { }
       }
     }
     /* ---- launcher ----
@@ -5998,7 +6865,7 @@
     }
     // Asked on the first boot that finds any model installed, and again after a factory reset,
     // which clears the answer. Either reply records that the question was put, so it never nags.
-    // Does NOT touch autoLoad — that stays off and is only toggled manually in Settings.
+    // Does NOT touch autoLoad. That stays off and is only toggled manually in Settings.
     async function firstRunPrompt() {
       const s = state.settings;
       if (s.autoLoadPrompted || !modelCache.length) return false;
@@ -6083,6 +6950,1253 @@
       await ensureLoaded(want);
     }
 
+    /* ============ Tauri bridge ============
+       Everything below degrades to a no-op in a plain browser, so serving src/ over a static
+       server (see .claude/launch.json) still runs the whole UI. Only the four bootstrap
+       commands need the desktop shell; models, downloads and chat are all plain HTTP. */
+    const tauriApi = () => (typeof window !== "undefined" && window.__TAURI__) || null;
+    const hasTauri = () => { const t = tauriApi(); return !!(t && t.core && typeof t.core.invoke === "function"); };
+    function invoke(cmd, args) {
+      if (!hasTauri()) return Promise.reject(new Error("Desktop features are unavailable here."));
+      return tauriApi().core.invoke(cmd, args || {});
+    }
+    function onTauriEvent(name, fn) {
+      const t = tauriApi();
+      if (!t || !t.event || typeof t.event.listen !== "function") return;
+      try { t.event.listen(name, e => fn(e && e.payload)); } catch { }
+    }
+
+    /* ============ Ollama bootstrap ============
+       Detect Ollama, start it if it is merely stopped, and install it if it is genuinely
+       absent. Runs on every open, entirely in the background: nothing here is allowed to
+       delay the first paint.
+
+       Deliberately skipped when the base URL is not local. Pointing the app at another
+       machine is a considered choice, and installing a copy of Ollama on this one could not
+       help. The models live on the other box. */
+    const LOCAL_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "::1"];
+    function isLocalBase() {
+      try { return LOCAL_HOSTS.includes(new URL(base()).hostname.toLowerCase()); }
+      catch { return false; }
+    }
+    // Is the server answering? Deliberately its own tiny request rather than loadModels(),
+    // because this runs before the UI should react to anything.
+    async function ollamaAlive(ms = 1500) {
+      try { return (await oreq("/api/tags", { timeout: ms })).ok; }
+      catch { return false; }
+    }
+    // The server accepts connections a moment after the process starts, so readiness is
+    // polled rather than assumed.
+    async function waitForOllama(totalMs = 20000) {
+      const until = Date.now() + totalMs;
+      while (Date.now() < until) {
+        if (await ollamaAlive(1200)) return true;
+        await new Promise(r => setTimeout(r, 600));
+      }
+      return false;
+    }
+    const setupEl = () => $("#setup");
+    /* While this screen is up, keep checking whether Ollama has appeared by other means: the
+       user installing it by hand, or the tray app starting late. Getting out of the way is
+       better than leaving them staring at an Install button for something already installed.
+       Paused while our own install runs, which reports its own progress. */
+    let setupPoll = null;
+    function showSetup(on) {
+      setupEl().classList.toggle("open", !!on);
+      if (setupPoll) { clearInterval(setupPoll); setupPoll = null; }
+      if (!on) return;
+      setupPoll = setInterval(async () => {
+        if (!setupEl().classList.contains("open")) return;
+        if ($("#setupProgress").classList.contains("on")) return;
+        if (!await ollamaAlive(1200)) return;
+        showSetup(false);
+        await loadModels();
+        showGetModelsCard();
+      }, 4000);
+    }
+    /* Install progress.
+
+       install.ps1 reports one number: a percentage. That alone cannot say how big the
+       download is or how fast it is moving, which is what made a 1.5GB transfer feel like a
+       hang. One HEAD against the same release URL the script downloads from turns that
+       percentage into real megabytes, a rate and an estimate.
+
+       The rate is averaged over a short window rather than computed between consecutive
+       readings, because instantaneous rates on a chunked download swing wildly enough to
+       make the estimate useless. */
+    let installTotal = 0, installStart = 0, installTimer = null, installPct = 0;
+    let rateWindow = [];   // [{t, bytes}] over the last few seconds
+    function fmtDuration(secs) {
+      if (!Number.isFinite(secs) || secs <= 0) return "";
+      if (secs < 60) return `${Math.round(secs)}s`;
+      const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+      if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+      return `${Math.floor(m / 60)}h ${m % 60}m`;
+    }
+    function setInstallPercent(pct) {
+      installPct = pct;
+      const bar = $("#setupBar");
+      bar.classList.add("on", "exact");
+      bar.querySelector("i").style.width = pct.toFixed(1) + "%";
+      if (!installTotal) { $("#setupStats").textContent = pct.toFixed(1) + "%"; return; }
+      const done = installTotal * (pct / 100);
+      const now = Date.now();
+      rateWindow.push({ t: now, bytes: done });
+      while (rateWindow.length > 1 && now - rateWindow[0].t > 6000) rateWindow.shift();
+      const first = rateWindow[0];
+      const secs = (now - first.t) / 1000;
+      const rate = secs > 0.5 ? (done - first.bytes) / secs : 0;
+      const parts = [`${fmtBytes(done)} / ${fmtBytes(installTotal)}`];
+      if (rate > 0) {
+        parts.push(`${fmtBytes(rate)}/s`);
+        const left = fmtDuration((installTotal - done) / rate);
+        if (left) parts.push(`about ${left} left`);
+      }
+      $("#setupStats").textContent = parts.join(" · ");
+    }
+    function startInstallUI() {
+      $("#setupErr").textContent = "";
+      $("#setupBtn").style.display = "none";          // replaced, not greyed out
+      $("#setupProgress").classList.add("on");
+      $("#setupStage").textContent = "Downloading Ollama…";
+      $("#setupStats").textContent = "";
+      const bar = $("#setupBar");
+      bar.classList.add("on");
+      bar.classList.remove("exact");                  // indeterminate until a real % arrives
+      bar.querySelector("i").style.width = "";
+      installTotal = 0; installPct = 0; rateWindow = []; installStart = Date.now();
+      clearInterval(installTimer);
+      // The installer phase prints nothing at all, so once the download is done the elapsed
+      // timer is the only thing left proving the app has not wedged.
+      installTimer = setInterval(() => {
+        if (installPct < 100 && installTotal) return;   // the stats line is already talking
+        const el = $("#setupStats");
+        if (el) el.textContent = "Elapsed " + fmtDuration((Date.now() - installStart) / 1000);
+      }, 1000);
+      invoke("installer_size").then(n => { installTotal = Number(n) || 0; }).catch(() => { });
+    }
+    function stopInstallUI() {
+      clearInterval(installTimer); installTimer = null;
+      $("#setupProgress").classList.remove("on");
+      $("#setupBar").classList.remove("on", "exact");
+    }
+    function setupFailed(msg) {
+      stopInstallUI();
+      $("#setupBtn").style.display = "";
+      $("#setupBtn").textContent = "Try again";
+      $("#setupErr").innerHTML = `${esc(msg)}<br><br>You can install it yourself from `
+        + `<a href="https://ollama.com/download/windows" target="_blank" rel="noopener">ollama.com/download</a>, `
+        + `then reopen DeskOllama.`;
+    }
+    // Both of these are best-effort readings of console output. If Ollama reword it we lose
+    // the label or the bar goes indeterminate, and nothing else is affected.
+    onTauriEvent("ollama-install-stage", txt => {
+      if (typeof txt === "string" && txt.trim()) $("#setupStage").textContent = txt.trim();
+    });
+    onTauriEvent("ollama-install-percent", pct => {
+      const n = Number(pct);
+      if (Number.isFinite(n)) setInstallPercent(n);
+    });
+    async function runInstall() {
+      startInstallUI();
+      try {
+        await invoke("ollama_install");
+      } catch (e) {
+        setupFailed(String((e && e.message) || e));
+        return false;
+      }
+      $("#setupStage").textContent = "Starting Ollama…";
+      /* Ollama's installer launches Ollama itself, so spawning our own `ollama serve` on top
+         of it makes two processes race for port 11434. One wins, the other retries forever,
+         and the logs fill with "bind: Only one usage of each socket address". Give the one
+         the installer started a moment to come up, and only step in if nothing does. */
+      if (!await waitForOllama(8000)) {
+        try { await invoke("ollama_start", { exe: null }); } catch { }
+        if (!await waitForOllama()) {
+          setupFailed("Ollama was installed but the server did not start.");
+          return false;
+        }
+      }
+      stopInstallUI();
+      showSetup(false);
+      await loadModels();
+      showGetModelsCard();
+      return true;
+    }
+    /* Ollama installs with no models at all, so the chat screen it lands on can do nothing
+       but report emptiness. This is a card rather than a line of banner text because it is
+       the one action worth taking, and it should look like one. */
+    function showGetModelsCard() {
+      els.banner.style.display = "block";
+      els.banner.innerHTML = `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="font-weight:600;margin-bottom:3px">Ollama is ready</div>
+          <div style="color:var(--muted);font-size:13px">You don't have any models yet. Pick one to start chatting.</div>
+        </div>
+        <button class="btn primary" id="bannerGetModels" style="padding:8px 16px">Browse models</button>
+      </div>`;
+      const b = $("#bannerGetModels");
+      if (b) b.onclick = () => { els.banner.style.display = "none"; openModels(); };
+    }
+    /* The close handler lives in Rust, where none of the settings are visible, so the two
+       things it needs are pushed to it whenever they change. Without this the handler
+       unloaded models regardless of the switch, and always against localhost:11434. */
+    function syncClosePolicy() {
+      if (!hasTauri()) return;
+      invoke("set_close_policy", {
+        unload: !!state.settings.unloadOnClose,
+        baseUrl: base()
+      }).catch(() => { });
+    }
+    async function bootstrapOllama() {
+      if (!isLocalBase()) return;              // their own server; leave the machine alone
+      if (await ollamaAlive(2500)) return;     // already up, which is the common case
+      if (!hasTauri()) return;                 // a browser cannot install or spawn anything
+      let info = null;
+      try { info = await invoke("ollama_detect"); } catch { return; }
+      if (!info || !info.supported) return;    // not Windows: today's behaviour, unchanged
+      if (info.installed) {
+        // Installed but stopped. No overlay for this: it is a second or two, and the footer
+        // status already exists to say so.
+        els.condot.className = "dot warn";
+        els.constat.textContent = "Starting Ollama…";
+        try { await invoke("ollama_start", { exe: info.exe }); } catch { }
+        // Either way the caller runs loadModels() next, which paints the real state.
+        await waitForOllama();
+        return;
+      }
+      showSetup(true);
+    }
+    $("#setupBtn").addEventListener("click", runInstall);
+
+    /* ============ model catalog (ollama.com) ============
+       There is no search API for the Ollama library. The only machine-readable thing is the
+       website itself. Rust fetches it (the webview cannot: no CORS headers), and the parsing
+       happens here with the webview's own DOMParser, which is why no HTML parsing crate is
+       needed on the Rust side.
+
+       Every selector below is written to degrade rather than throw. The one thing anchored to
+       is the /library/<name> URL shape, which is the most stable part of the page; if the
+       surrounding markup changes, cards lose detail instead of the tab going blank. Nothing
+       here sits on a path that chat depends on. */
+    const CATALOG_CAPS = ["vision", "tools", "thinking", "embedding", "cloud"];
+    /* A model name out of a link, covering both shapes ollama.com uses.
+
+       /library/<name> is an official model. /<user>/<name> is a community one, and those are
+       the bulk of the marketplace: the library page lists a couple of hundred curated models
+       while everything published by users (every abliterated build, every fine-tune) only
+       ever appears in search results. Treating the two identically from here on is what makes
+       the rest of the marketplace reachable at all. */
+    const NON_MODEL_PATHS = new Set(["library", "search", "blog", "download", "signin", "signup",
+      "docs", "pricing", "turbo", "cloud", "public", "settings", "new", "models", "assets"]);
+    function catalogName(href) {
+      const p = (href || "").split(/[?#]/)[0].replace(/\/+$/, "");
+      const lib = /^\/library\/([^\/:]+)$/.exec(p);
+      if (lib) return lib[1];
+      const usr = /^\/([^\/:]+)\/([^\/:]+)$/.exec(p);
+      if (!usr) return null;
+      if (NON_MODEL_PATHS.has(usr[1].toLowerCase())) return null;
+      if (/\.(png|jpe?g|svg|ico|webp|css|js|txt|xml|json)$/i.test(usr[2])) return null;
+      return usr[1] + "/" + usr[2];
+    }
+    // One parser for the library listing and for search results: the card markup is the same,
+    // only the link shape differs, and catalogName() absorbs that.
+    function parseCatalog(html) {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const out = [], seen = new Set();
+      for (const a of doc.querySelectorAll('a[href^="/"]')) {
+        const name = catalogName(a.getAttribute("href"));
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        /* The description is a <p> holding nothing but text. The card's stats line is also a
+           <p>, but one wrapping spans, and with its whitespace it is the longer of the two.
+           so "the longest <p>" picks the wrong one. Preferring a childless <p> picks the
+           description on today's markup and degrades to the old guess if that ever changes. */
+        let desc = "";
+        const paras = [...a.querySelectorAll("p")];
+        /* A handful of models carry no description at all, and for those the fallback would
+           otherwise settle on the stats line. No description is the honest answer.
+
+           Both nouns are matched singular as well as plural: a model with one tag renders
+           "1 Tag", which a plural-only test misses, and its stats line then gets shown as the
+           description. "Updated" is accepted as the second signal too, since the counts move
+           around but that word does not. */
+        const isStats = t => /\bpulls?\b/i.test(t) && (/\btags?\b/i.test(t) || /\bupdated\b/i.test(t));
+        for (const p of paras.filter(p => !p.children.length).concat(paras)) {
+          const t = p.textContent.replace(/\s+/g, " ").trim();
+          if (t && !isStats(t)) { desc = t; break; }
+        }
+        const flat = a.textContent.replace(/\s+/g, " ");
+        const pm = /([\d.]+[KMB]?)\s*Pulls/i.exec(flat);
+        const pulls = pm ? pm[1] : "";
+        // "Updated 3 months ago" -> roughly 90, purely so Newest can sort. Approximate by
+        // nature: the page publishes a relative phrase, not a date.
+        const um = /Updated\s+(?:about\s+)?(\d+)\s*(hour|day|week|month|year)s?\s*ago/i.exec(flat);
+        const AGE = { hour: 1 / 24, day: 1, week: 7, month: 30, year: 365 };
+        const age = um ? Number(um[1]) * AGE[um[2].toLowerCase()] : Number.MAX_SAFE_INTEGER;
+        const caps = [], sizes = [];
+        for (const el of a.querySelectorAll("span,div")) {
+          if (el.children.length) continue;                    // leaf nodes carry the badges
+          const t = el.textContent.trim().toLowerCase();
+          if (CATALOG_CAPS.includes(t)) { if (!caps.includes(t)) caps.push(t); }
+          // The pull count sits in a bare span and looks exactly like a parameter size
+          // ("118M"), so it is excluded by value. Matching on the badge's class instead would
+          // tie us to a Tailwind string that means nothing and changes without warning.
+          else if (/^\d+(?:\.\d+)?[bm]$/.test(t) && t !== pulls.toLowerCase() && !sizes.includes(t)) sizes.push(t);
+        }
+        out.push({ name, desc, caps, sizes, pulls, age, community: name.includes("/") });
+      }
+      return out;
+    }
+    const parseLibrary = html => parseCatalog(html);
+    /* A row's text, assembled from its leaf elements rather than taken as one blob.
+       textContent concatenates adjacent elements with nothing between them, so a row built as
+       <span>1.3GB</span><span>128K context</span> reads as "1.3GB128K context" and every
+       regex below loses its word boundary. Joining the leaves restores the separators the
+       markup only implies. */
+    function rowText(box) {
+      const parts = [];
+      for (const el of box.querySelectorAll("*")) {
+        if (el.children.length) continue;
+        const t = el.textContent.replace(/\s+/g, " ").trim();
+        if (t) parts.push(t);
+      }
+      if (!parts.length) parts.push(box.textContent.replace(/\s+/g, " ").trim());
+      return " " + parts.join(" ") + " ";
+    }
+    // One row per tag. Quantization is read off the tag name itself, which is where Ollama
+    // encodes it; the rest comes from the row's text so no class name is depended on.
+    /* Where a model lives on ollama.com and in the registry. Official models sit under
+       library/, community ones under their author's name, and every URL built from here has
+       to follow that or community models silently 404. */
+    const modelPath = name => (String(name).includes("/") ? String(name) : "library/" + name);
+    function parseTags(html, model) {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const esc_ = modelPath(model).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      /* Case-insensitive, and the name is taken from the link rather than rebuilt.
+         Authors publish under one casing and link under another: ayushshah/qwen3-1.7b-chat
+         lists its tags as /ayushshah/Qwen3-1.7B-Chat:q3_k_l. A case-sensitive match found
+         nothing there, so every quantization silently vanished and the model appeared to
+         have a single version. */
+      const re = new RegExp("^/" + esc_ + ":([^/?#]+)$", "i");
+      const out = [], seen = new Set();
+      for (const a of doc.querySelectorAll('a[href*="/library/"]')) {
+        const href = (a.getAttribute("href") || "").split(/[?#]/)[0].replace(/\/+$/, "");
+        const m = re.exec(href);
+        if (!m) continue;
+        const tag = m[1];
+        if (seen.has(tag)) continue;
+        seen.add(tag);
+        let box = a.closest("li") || a.parentElement || a;
+        for (let i = 0; i < 3 && box.parentElement && box.textContent.replace(/\s+/g, "").length < 24; i++) box = box.parentElement;
+        const t = rowText(box);
+        const q = /(q\d+_[0-9a-z_]+|iq\d+_[0-9a-z_]+|mxfp4|bf16|fp16|f16|f32)/i.exec(tag);
+        out.push({
+          tag, name: href.slice(1),          // the link's own casing, which is what pulls
+
+          quant: q ? q[1].toUpperCase() : "",
+          size: (/(\d+(?:\.\d+)?)\s?(TB|GB|MB)\b/i.exec(t) || [""])[0].replace(/\s+/g, ""),
+          ctx: (/(\d+(?:\.\d+)?[KM])\s*context/i.exec(t) || [])[1] || "",
+          digest: (/\b([0-9a-f]{12})\b/.exec(t) || [])[1] || "",
+          vision: /\bvision\b|\bimage input\b/i.test(t)
+        });
+      }
+      return out;
+    }
+    let catalog = null, catalogErr = "", catalogLoading = false;
+    const variantCache = Object.create(null);
+    async function fetchCatalog(force) {
+      if (catalogLoading) return;
+      if (catalog && !force) return;
+      catalogLoading = true; catalogErr = "";
+      if (modelsOpen) renderModels();
+      try {
+        const list = parseLibrary(await invoke("fetch_page", { url: "https://ollama.com/library" }));
+        if (!list.length) throw new Error("The model list could not be read.");
+        catalog = list;
+      } catch (e) {
+        catalogErr = hasTauri() ? String((e && e.message) || e) : "Browsing the library needs the desktop app.";
+      } finally {
+        catalogLoading = false;
+        if (modelsOpen) renderModels();
+      }
+    }
+    async function fetchVariants(name) {
+      if (variantCache[name]) return variantCache[name];
+      const rows = parseTags(await invoke("fetch_page", { url: "https://ollama.com/" + modelPath(name) + "/tags" }), name);
+      variantCache[name] = rows;
+      // Every tag page read is also an update check, for free: the short digest shown there
+      // is the same one /api/tags reports locally.
+      for (const r of rows) if (r.digest) remoteDigests()[r.name] = r.digest;
+      save();
+      return rows;
+    }
+
+    /* ---- the flat catalog ----
+       One row per thing you can actually download, rather than a model you then have to open
+       and dig through. "Llama 3.2 · 3B" is a row; so is "Llama 3.2 · 1B". That is what makes
+       searching "qwen3.6-35b" land on the exact item instead of a model page, and it removes
+       the drill-down entirely.
+
+       Sizes come from the model's tags page, which lists every tag with its download size in
+       ONE request, far cheaper than asking the registry per row. That page is fetched lazily,
+       per model, as its rows come into view. */
+    function sizeToBytes(s) {
+      const m = /^([\d.]+)\s*(TB|GB|MB|KB)$/i.exec(String(s || "").trim());
+      if (!m) return 0;
+      const mult = { kb: 1e3, mb: 1e6, gb: 1e9, tb: 1e12 }[m[2].toLowerCase()];
+      return Math.round(Number(m[1]) * mult);
+    }
+    /* Rows for one catalog entry.
+
+       A size badge is a hint, not a fact: it says the model comes in 8b, not that a tag named
+       `8b` exists. Once the tags page has loaded, those tags ARE the facts, so the rows get
+       rebuilt from them. This previously dropped any row whose guessed tag turned out not to
+       exist, which silently deleted models from the list instead of correcting them. Nothing
+       is ever removed now; a wrong guess is replaced by the real thing. */
+    const PRIMARY_TAG = /^(latest|[\d.]+[bmk])$/i;
+    const CLOUD_TAG = /-cloud$/i;
+    // Parameter count in billions, from a listing badge like "8b" or "270m". This is the only
+    // size information available while browsing, since download sizes now cost a request per
+    // model and are fetched only when a row is opened.
+    function paramB(s) {
+      const m = /^([\d.]+)\s*([bm])$/i.exec(String(s || "").trim());
+      return m ? Number(m[1]) * (m[2].toLowerCase() === "b" ? 1 : 0.001) : 0;
+    }
+    const modelParams = m => (m.sizes || []).reduce((n, s) => Math.max(n, paramB(s)), 0);
+    const isCloudModel = m => (m.caps || []).includes("cloud");
+    // "Updated 3 weeks ago" from the age in days that the listing gave us.
+    function agoText(age) {
+      if (!Number.isFinite(age) || age >= Number.MAX_SAFE_INTEGER) return "";
+      if (age < 1) return "today";
+      if (age < 30) { const w = Math.round(age / 7); return w < 1 ? `${Math.round(age)}d ago` : `${w}w ago`; }
+      if (age < 365) return `${Math.round(age / 30)}mo ago`;
+      return `${Math.max(1, Math.round(age / 365))}y ago`;
+    }
+    /* What the list is built from. With no query that is the official library; with one it is
+       the library plus whatever ollama.com's own search returned, because the library listing
+       covers only a couple of hundred curated models and everything published by users lives
+       outside it. */
+    function activeCatalog() {
+      const q = mpQuery.trim().toLowerCase();
+      const own = catalog || [];
+      const found = (searchCache[q] && searchCache[q].rows) || [];
+      if (!q || !found.length) return own;
+      const seen = new Set(own.map(m => m.name));
+      return own.concat(found.filter(m => !seen.has(m.name)));
+    }
+    /* Searching the marketplace itself, not just what we already downloaded.
+       Debounced and cached per query, so typing does not fire a request per keystroke and a
+       repeated search costs nothing. */
+    const searchCache = Object.create(null);
+    let searchTimer = null;
+    function scheduleSearch() {
+      clearTimeout(searchTimer);
+      const q = mpQuery.trim();
+      if (q.length < 2 || searchCache[q.toLowerCase()]) return;
+      searchTimer = setTimeout(() => loadMoreSearch(q), 350);
+    }
+    /* Pulls the next page of results for `q`, one page per call, and stops when a page adds
+       nothing new. Called first by the debounce and then by the scroll sentinel, which is what
+       makes the whole result set reachable without fetching it all up front: twenty models
+       arrive immediately, the rest as you scroll toward them.
+
+       `done` is set on the first page that yields no new names rather than on an empty one,
+       because the last page can legitimately repeat entries from the one before it. */
+    async function loadMoreSearch(q) {
+      const key = q.toLowerCase();
+      let e = searchCache[key];
+      if (!e) e = searchCache[key] = { rows: [], pages: 0, loading: false, done: false };
+      if (e.loading || e.done) return;
+      e.loading = true;
+      const wanted = e.pages + 1;
+      if (modelsOpen && mpTab === "library") renderModels();
+      try {
+        const html = await invoke("fetch_page", {
+          url: `https://ollama.com/search?q=${encodeURIComponent(q)}&page=${wanted}`,
+          hx: true
+        });
+        const seen = new Set(e.rows.map(m => m.name));
+        const fresh = parseCatalog(html).filter(m => !seen.has(m.name));
+        e.rows = e.rows.concat(fresh);
+        e.pages = wanted;
+        if (!fresh.length) e.done = true;
+      } catch (err) {
+        e.error = String((err && err.message) || err);
+        e.done = true;                       // don't hammer a failing endpoint on every scroll
+      } finally {
+        e.loading = false;
+        if (modelsOpen && mpTab === "library" && mpQuery.trim().toLowerCase() === key) renderModels();
+      }
+    }
+    // Is there more to fetch for what is currently typed?
+    function searchHasMore() {
+      const q = mpQuery.trim().toLowerCase();
+      if (!q) return false;                  // browsing is the library, which is not paginated
+      const e = searchCache[q];
+      return !e || (!e.done && !e.error);
+    }
+    /* Exact bytes and quantization for one tag, straight from the registry.
+       Only called when a row is actually clicked: it is two small requests, and nothing about
+       browsing needs them. This is the only place quantization can come from for a plain tag
+       like `:1b`, which ollama.com never prints. */
+    const regCache = Object.create(null);
+    async function registryInfo(tag) {
+      if (regCache[tag]) return regCache[tag];
+      const at = tag.lastIndexOf(":");
+      const model = at > 0 ? tag.slice(0, at) : tag;
+      const ver = at > 0 ? tag.slice(at + 1) : "latest";
+      const base = "https://registry.ollama.ai/v2/" + modelPath(model);
+      const man = JSON.parse(await invoke("fetch_page", { url: `${base}/manifests/${encodeURIComponent(ver || "latest")}` }));
+      const layers = Array.isArray(man.layers) ? man.layers : [];
+      const info = {
+        bytes: layers.reduce((s, l) => s + (Number(l.size) || 0), 0),
+        digests: layers.map(l => l.digest).filter(Boolean),
+        quant: "", params: "", family: ""
+      };
+      if (man.config && man.config.digest) {
+        info.digests.push(man.config.digest);
+        try {
+          const cfg = JSON.parse(await invoke("fetch_page", { url: `${base}/blobs/${man.config.digest}` }));
+          info.quant = cfg.file_type || "";
+          info.params = cfg.model_type || "";
+          info.family = cfg.model_family || "";
+        } catch { }   // the size is the part that matters; details are a bonus
+      }
+      regCache[tag] = info;
+      return info;
+    }
+
+    /* ============ downloads ============
+       /api/pull is on localhost, so this needs no Rust at all and reuses the same NDJSON
+       reader loop that generate() uses.
+
+       Interruptions need no handling of our own either: Ollama keeps the blobs it has already
+       written, so re-issuing a pull resumes rather than restarting. What is persisted here is
+       only the intent (which tag was wanted), so a download killed by a crash or a close can
+       be offered as Resume rather than silently forgotten. */
+    const pendingPulls = () => (Array.isArray(state.pendingPulls) ? state.pendingPulls : (state.pendingPulls = []));
+    const remoteDigests = () => (state.remoteDigests && typeof state.remoteDigests === "object" ? state.remoteDigests : (state.remoteDigests = {}));
+    let pullQueue = [], activePull = null, pullErrors = Object.create(null);
+    let lastPullPaint = 0, lastPullStatus = "";
+    const isPulling = tag => (activePull && activePull.tag === tag) || pullQueue.includes(tag);
+    function startPull(tag) {
+      if (!tag || isPulling(tag)) return;
+      delete pullErrors[tag];
+      if (!pendingPulls().includes(tag)) pendingPulls().push(tag);
+      pullQueue.push(tag); save();
+      renderPullUI(true);
+      drainPulls();
+    }
+    /* Pause and Cancel are the same operation as far as Ollama is concerned. There is no
+       pause API, and aborting the stream is all either can do. What separates them is what
+       happens to the bytes already on disk afterwards.
+
+       Pause keeps them, so Resume continues rather than restarts. */
+    function pausePull(tag) {
+      pullQueue = pullQueue.filter(t => t !== tag);
+      if (activePull && activePull.tag === tag) activePull.controller.abort();
+      renderPullUI(true);
+    }
+    /* Cancel throws the download away for real, which is the part Ollama gives us nothing for.
+       The layers of the cancelled pull are deleted, except any that something else still
+       needs, and "something else" means both an installed model and any OTHER download you
+       have paused. Two paused downloads sharing a layer is the case that makes a naive
+       delete-by-digest destructive. */
+    async function cancelPull(tag) {
+      const active = activePull && activePull.tag === tag;
+      const known = regCache[tag];
+      const sizeNote = active ? pullTotals(activePull).completed : 0;
+      const choice = await dialog("Cancel download",
+        `Cancel <b>${esc(tag)}</b>?`
+        + (sizeNote ? ` The ${fmtBytes(sizeNote)} downloaded so far will be deleted.` : ` Anything downloaded so far will be deleted.`)
+        + `<br><br><span style="color:var(--muted)">Pause instead to keep it and continue later.</span>`,
+        [{ label: "Keep downloading", value: "keep", cancel: true },
+        { label: "Pause", value: "pause" },
+        { label: "Cancel download", value: "cancel", primary: true }]);
+      if (choice === "keep" || choice == null) return;
+      if (choice === "pause") { pausePull(tag); return; }
+      pausePull(tag);
+      state.pendingPulls = pendingPulls().filter(t => t !== tag);
+      delete pullErrors[tag];
+      save(); renderPullUI(true);
+      // Deleting is best-effort and never blocks the UI: the download is already stopped and
+      // removed from the list, which is what the user asked for.
+      try {
+        const mine = known || await registryInfo(tag);
+        // Everything still wanted by another pull we are holding.
+        const keep = [];
+        for (const other of pendingPulls()) {
+          if (other === tag) continue;
+          const info = regCache[other] || await registryInfo(other).catch(() => null);
+          if (info) keep.push(...info.digests);
+        }
+        const freed = await invoke("purge_blobs", { digests: mine.digests, keep });
+        if (freed > 0) {
+          els.banner.style.display = "block";
+          els.banner.textContent = `Cancelled ${tag} and freed ${fmtBytes(freed)}.`;
+          setTimeout(() => { els.banner.style.display = "none"; }, 6000);
+        }
+      } catch { }
+      if (modelsOpen) renderModels();
+    }
+    // The buttons a download shows, which is the whole of the pause/cancel distinction made
+    // visible: one action while it runs, two once it is stopped.
+    function pullButtons(tag) {
+      const running = activePull && activePull.tag === tag;
+      if (running || pullQueue.includes(tag)) return [mkBtn("Pause", "", () => pausePull(tag))];
+      return [mkBtn("Resume", "", () => startPull(tag)), mkBtn("Cancel", "danger", () => cancelPull(tag))];
+    }
+    async function drainPulls() {
+      if (activePull || !pullQueue.length) return;
+      const tag = pullQueue.shift();
+      // `layers` is keyed by digest so the totals accumulate instead of resetting. Ollama
+      // reports progress per layer, so reading the last line alone made the bar restart at
+      // zero several times per download, which is what made it look broken.
+      let streamError = "";
+      const pull = { tag, controller: null, layers: Object.create(null), status: "starting", rate: [] };
+      try {
+        /* Built and attached BEFORE anything is painted, so there is never a moment where a
+           Pause button is on screen for a record whose controller is still null. Nothing
+           yields in between today, which is precisely why the hazard would survive review and
+           then break the first time something here gained an await. */
+        const s = ostream("/api/pull", { model: tag, stream: true }, o => {
+          if (o.error) { streamError = String(o.error); return; }
+          if (o.status) pull.status = o.status;
+          // Recorded against its own layer, so the sum only ever moves forward. Lines with
+          // no digest are status-only ("verifying sha256 digest") and carry no progress.
+          if (o.digest && (Number.isFinite(o.total) || Number.isFinite(o.completed))) {
+            pull.layers[o.digest] = {
+              total: Number(o.total) || 0,
+              completed: Number(o.completed) || 0
+            };
+          }
+          paintPullProgress();
+        });
+        pull.controller = { abort: s.abort };
+        activePull = pull;                      // fully formed before anything can see it
+        renderPullUI(true);
+        const res = await s.done;
+        if (res.aborted) throw Object.assign(new Error("aborted"), { aborted: true });
+        if (res.error || streamError) throw new Error(res.error || streamError);
+        state.pendingPulls = pendingPulls().filter(t => t !== tag);
+        save();
+        await loadModels();                     // picker, capabilities and Installed all refresh
+      } catch (e) {
+        // An abort leaves the tag pending on purpose, which is what turns it into Resume.
+        if (!(e && e.aborted)) pullErrors[tag] = String((e && e.message) || e);
+      } finally {
+        // Cleared here and nowhere else. Releasing it before the await above would let a
+        // second drain start while this one was still finishing, and the two would then
+        // overwrite each other's activePull.
+        activePull = null;
+        renderPullUI();
+        drainPulls();
+      }
+    }
+    // Ollama emits progress far faster than a screen can usefully show it, and a full page
+    // rebuild at that rate would be wasteful with a few hundred catalog cards on screen. So
+    // the common tick only writes the numbers into elements that already exist, and the page
+    // is rebuilt only when something structural changes: a new layer, or a pull starting or
+    // finishing.
+    function paintPullProgress() {
+      const now = Date.now();
+      if (now - lastPullPaint < 90) return;
+      lastPullPaint = now;
+      const structural = activePull && activePull.status !== lastPullStatus;
+      if (structural) lastPullStatus = activePull.status;
+      renderPullUI(structural);
+    }
+    // One figure for the whole download, summed across every layer seen so far.
+    function pullTotals(p) {
+      let completed = 0, total = 0;
+      for (const l of Object.values((p && p.layers) || {})) { completed += l.completed; total += l.total; }
+      return { completed, total };
+    }
+    const pullPct = p => { const t = pullTotals(p); return t.total > 0 ? Math.min(100, (t.completed / t.total) * 100) : 0; };
+    // Averaged over a few seconds, because a per-line rate on a chunked transfer swings hard
+    // enough to make the estimate worse than none.
+    function pullRate(p) {
+      if (!p) return 0;
+      const { completed } = pullTotals(p), now = Date.now();
+      p.rate.push({ t: now, bytes: completed });
+      while (p.rate.length > 1 && now - p.rate[0].t > 6000) p.rate.shift();
+      const first = p.rate[0], secs = (now - first.t) / 1000;
+      return secs > 0.5 ? Math.max(0, (completed - first.bytes) / secs) : 0;
+    }
+    function pullText(p) {
+      if (!p) return "Queued";
+      const { completed, total } = pullTotals(p);
+      if (total <= 0) return p.status;
+      const bits = [`${fmtBytes(completed)} / ${fmtBytes(total)}`];
+      const rate = pullRate(p);
+      if (rate > 0) {
+        bits.push(`${fmtBytes(rate)}/s`);
+        const left = fmtDuration((total - completed) / rate);
+        if (left) bits.push(`${left} left`);
+      }
+      bits.push(p.status);
+      return bits.join(" · ");
+    }
+    function renderPullUI(structural) {
+      const pill = $("#dlPill"), pip = $("#navModelsPip");
+      const p = activePull;
+      const queued = pullQueue.length;
+      if (p) {
+        const pct = pullPct(p);
+        pill.classList.add("on");
+        $("#dlPillName").textContent = p.tag;
+        $("#dlPillBar").style.width = pct.toFixed(1) + "%";
+        $("#dlPillPct").textContent = p.total > 0 ? Math.round(pct) + "%" : "";
+        pill.title = `${p.status}${queued ? ` · ${queued} queued` : ""}`;
+        pip.classList.add("on");
+        pip.textContent = p.total > 0 ? Math.round(pct) + "%" : "…";
+      } else {
+        pill.classList.remove("on");
+        pip.classList.toggle("on", queued > 0);
+        pip.textContent = queued ? String(queued) : "";
+        lastPullStatus = "";
+      }
+      if (!modelsOpen) return;
+      /* Only one pull runs at a time, so a single marked row is all there is to update.
+         The `p &&` is load-bearing: when a pull finishes or is cancelled the row is still in
+         the DOM carrying .dl-live, and without it this took the in-place path and returned
+         before re-rendering. That is what made Cancel look like it did nothing and left
+         Download stuck reading "Downloading" until a refresh. */
+      const bar = $(".dl-live i"), txt = $(".dl-live .dltext");
+      if (p && bar && txt && !structural) { bar.style.width = pullPct(p).toFixed(1) + "%"; txt.textContent = pullText(p); return; }
+      renderModels();
+    }
+
+    /* ============ Models page ============ */
+    // Opens on the Library: the reason to come here is almost always to get something new,
+    // and what is installed is one click away.
+    let modelsOpen = false, mpTab = "library", mpQuery = "", mpFilter = "", mpSize = "", mpSort = "popular";
+    let mpSource = "", mpRuns = "", mpUpdated = "";
+    let instSort = "name";
+    let openDetails = Object.create(null);   // installed rows whose Details are expanded
+    function openModels() {
+      modelsOpen = true;
+      $("#main").classList.add("models");
+      $("#modelsPage").classList.add("open");
+      $("#navModels").classList.add("active");
+      renderSidebar();               // drops the highlight from the chat behind this page
+      renderModels();
+      if (mpTab === "library") fetchCatalog();
+    }
+    function closeModels() {
+      modelsOpen = false;
+      $("#main").classList.remove("models");
+      $("#modelsPage").classList.remove("open");
+      $("#navModels").classList.remove("active");
+      renderSidebar();               // and puts it back
+      safeFocusInput();
+    }
+    function setTab(t) {
+      mpTab = t; mpQuery = ""; mpFilter = ""; mpSize = "";
+      mpSource = ""; mpRuns = ""; mpUpdated = ""; libBatch = 40;
+      $("#mpSearch").value = "";
+      renderModels();
+      if (t === "library") fetchCatalog();
+    }
+    // The prefix is stripped because Ollama has reported this field both ways across versions,
+    // and a stale "sha256:" would make every model look like it had an update waiting.
+    const localDigest = name => {
+      const m = modelCache.find(x => x.name === name);
+      return String((m && m.digest) || "").replace(/^sha256[:-]/i, "");
+    };
+    // Ollama's own short form. The library pages publish 12 characters, /api/tags the full
+    // hash, so the comparison is made on the shorter of the two.
+    function updateAvailable(name) {
+      const remote = remoteDigests()[name], local = localDigest(name);
+      if (!remote || !local) return false;
+      return local.slice(0, remote.length) !== remote;
+    }
+    // Dense vs MoE, only where it is genuinely knowable. Expert counts live in model_info
+    // under the architecture's own namespace, exactly as the context and vision keys do, so
+    // this is the same suffix scan visionParam() uses. Absent for a model we have not asked
+    // about, and never guessed.
+    function archKind(name) {
+      const meta = metaAll()[name];
+      if (!meta || !meta.moe) return "";
+      return meta.moe === "moe" ? "MoE" : "Dense";
+    }
+    function capBadges(caps) {
+      return (caps || []).map(c => `<span class="badge cap">${esc(c)}</span>`).join("");
+    }
+    function renderModels() {
+      if (!modelsOpen) return;
+      $("#tabInstalled").classList.toggle("on", mpTab === "installed");
+      $("#tabLibrary").classList.toggle("on", mpTab === "library");
+      $("#installedCount").textContent = modelCache.length ? `(${modelCache.length})` : "";
+      $("#mpSearch").placeholder = mpTab === "library" ? "Search models, try \"qwen3 8b\"…" : "Search installed…";
+      renderFilters();
+      const body = $("#mpBody");
+      body.innerHTML = "";
+      if (mpTab === "installed") return renderInstalled(body);
+      return renderLibrary(body);
+    }
+    // Chip groups, built from the same helper so a group is one line to add or remove.
+    function chipGroup(label, opts, current, onPick) {
+      const wrap = document.createElement("div"); wrap.className = "chipgroup";
+      wrap.innerHTML = `<span class="cglabel">${esc(label)}</span>`
+        + opts.map(([v, l]) => `<button type="button" class="chip${v === current ? " on" : ""}" data-v="${escAttr(v)}">${esc(l)}</button>`).join("");
+      wrap.querySelectorAll("[data-v]").forEach(b => b.onclick = () => onPick(b.dataset.v));
+      return wrap;
+    }
+    function renderFilters() {
+      const wrap = $("#mpFilters");
+      wrap.innerHTML = "";
+      if (mpTab === "installed") {
+        wrap.appendChild(chipGroup("Sort", [["name", "Name"], ["size", "Size"]], instSort,
+          v => { instSort = v; renderModels(); }));
+        return;
+      }
+      wrap.appendChild(chipGroup("Sort",
+        [["popular", "Popular"], ["newest", "Newest"], ["name", "Name"], ["size", "Size"]], mpSort,
+        v => { mpSort = v; libBatch = 40; renderModels(); }));
+      const reset = () => { libBatch = 40; renderModels(); };
+      wrap.appendChild(chipGroup("Type",
+        [["", "All"], ...CATALOG_CAPS.filter(c => c !== "cloud").map(c => [c, c[0].toUpperCase() + c.slice(1)])], mpFilter,
+        v => { mpFilter = v; reset(); }));
+      wrap.appendChild(chipGroup("Size",
+        [["", "Any"], ...SIZE_BUCKETS.map(b => [b[0], b[1]])], mpSize,
+        v => { mpSize = v; reset(); }));
+      wrap.appendChild(chipGroup("Source",
+        [["", "All"], ["official", "Official"], ["community", "Community"]], mpSource,
+        v => { mpSource = v; reset(); }));
+      wrap.appendChild(chipGroup("Runs",
+        [["", "All"], ["local", "Local"], ["cloud", "Cloud"]], mpRuns,
+        v => { mpRuns = v; reset(); }));
+      wrap.appendChild(chipGroup("Updated",
+        [["", "Any"], ...UPDATED_BUCKETS.map(b => [b[0], b[1]])], mpUpdated,
+        v => { mpUpdated = v; reset(); }));
+    }
+    function emptyBox(body, msg, sub, btnLabel, btnFn) {
+      const d = document.createElement("div"); d.className = "mp-empty";
+      d.innerHTML = `${esc(msg)}${sub ? `<div class="sub">${sub}</div>` : ""}`;
+      if (btnLabel) {
+        const b = document.createElement("button"); b.className = "btn primary"; b.textContent = btnLabel;
+        b.onclick = btnFn; d.appendChild(b);
+      }
+      body.appendChild(d);
+    }
+    function renderInstalled(body) {
+      // Anything wanted but not yet on disk sits above the installed list: a paused download
+      // is the thing most likely to need attention on this page.
+      const pend = pendingPulls().filter(t => !modelCache.some(m => m.name === t));
+      for (const tag of pend) body.appendChild(pendingRow(tag));
+      const q = mpQuery.toLowerCase();
+      let list = modelCache.filter(m => !q || m.name.toLowerCase().includes(q));
+      list = list.slice().sort(instSort === "size"
+        ? (a, b) => (Number(b.size) || 0) - (Number(a.size) || 0)
+        : (a, b) => a.name.localeCompare(b.name));
+      if (!list.length && !pend.length) {
+        return emptyBox(body, modelCache.length ? "No installed model matches that." : "You have no models yet.",
+          modelCache.length ? "" : "Browse the library to download your first one.",
+          modelCache.length ? "" : "Open the library", () => setTab("library"));
+      }
+      if (list.length) body.appendChild(installedHeader(list));
+      for (const m of list) body.appendChild(installedRow(m));
+    }
+    /* What the models are costing, and where. This is the question Remove exists to answer,
+       so it belongs at the top of the tab rather than hidden in a details panel. */
+    function installedHeader(list) {
+      const bar = document.createElement("div"); bar.className = "ihead";
+      const bytes = list.reduce((s, m) => s + (Number(m.size) || 0), 0);
+      const info = document.createElement("div"); info.className = "isum";
+      info.textContent = `${list.length} model${list.length === 1 ? "" : "s"} · ${fmtBytes(bytes)}`;
+      const path = document.createElement("div"); path.className = "ipath";
+      bar.append(info, path);
+      // The real figure counts every blob, including layers shared between models, so it can
+      // differ from the sum above. Asked for quietly and only shown once it answers.
+      invoke("models_disk_usage").then(d => {
+        if (!d || !d.path) return;
+        path.textContent = `On disk: ${fmtBytes(Number(d.bytes) || 0)} · ${d.path}`;
+        path.title = d.path;
+      }).catch(() => { });
+      const acts = document.createElement("div"); acts.className = "iacts";
+      acts.appendChild(mkBtn(updateChecking ? "Checking…" : "Check for updates", "", checkUpdates));
+      bar.appendChild(acts);
+      return bar;
+    }
+    /* Compares each installed model against the tag page it came from. Run on demand rather
+       than on every visit: it is one request per distinct model, which is fine as a deliberate
+       action and wasteful as a side effect of opening a tab. */
+    let updateChecking = false;
+    async function checkUpdates() {
+      if (updateChecking) return;
+      updateChecking = true; renderModels();
+      try {
+        const bases = [...new Set(modelCache.map(m => m.name.split(":")[0]))];
+        for (const b of bases) {
+          delete variantCache[b];                 // a cached page cannot report anything new
+          await fetchVariants(b).catch(() => { });
+        }
+      } finally {
+        updateChecking = false;
+        if (modelsOpen) renderModels();
+      }
+    }
+    function pendingRow(tag) {
+      const row = document.createElement("div"); row.className = "irow";
+      const body = document.createElement("div"); body.className = "ibody";
+      const nm = document.createElement("div"); nm.className = "iname";
+      const running = activePull && activePull.tag === tag;
+      nm.innerHTML = `${esc(tag)}<span class="badge">${running ? "downloading" : (pullQueue.includes(tag) ? "queued" : "paused")}</span>`;
+      const sub = document.createElement("div"); sub.style.cssText = "font-size:12.5px;color:var(--muted)";
+      const err = pullErrors[tag];
+      sub.textContent = err ? err : (isPulling(tag) ? "" : "Paused. Resuming continues from what has already downloaded.");
+      if (err) sub.style.color = "var(--danger)";
+      body.append(nm, sub);
+      const acts = document.createElement("div"); acts.className = "iacts";
+      acts.append(...pullButtons(tag));
+      row.append(body, acts);
+      if (isPulling(tag)) row.appendChild(progressEl(tag));
+      return row;
+    }
+    function mkBtn(label, cls, fn) {
+      const b = document.createElement("button");
+      b.className = "btn" + (cls ? " " + cls : ""); b.textContent = label; b.onclick = fn;
+      return b;
+    }
+    // `dl-live` marks the row the running pull writes into, so progress ticks can update it
+    // in place instead of rebuilding the page.
+    function progressEl(tag) {
+      const p = (activePull && activePull.tag === tag) ? activePull : null;
+      const d = document.createElement("div"); d.className = "dl" + (p ? " dl-live" : "");
+      const bar = document.createElement("span"); bar.className = "dlbar";
+      const i = document.createElement("i"); i.style.width = pullPct(p).toFixed(1) + "%";
+      bar.appendChild(i);
+      const t = document.createElement("span"); t.className = "dltext";
+      t.textContent = pullText(p);
+      d.append(bar, t);
+      return d;
+    }
+    function installedRow(m) {
+      const meta = metaAll()[m.name] || {};
+      const det = (m.details || {});
+      const row = document.createElement("div"); row.className = "irow";
+      const body = document.createElement("div"); body.className = "ibody";
+      const nm = document.createElement("div"); nm.className = "iname";
+      const resident = loadedModels.has(m.name);
+      nm.innerHTML = esc(m.name)
+        + (resident ? `<span class="badge cap">loaded</span>` : "")
+        + (updateAvailable(m.name) ? `<span class="badge upd">update</span>` : "")
+        + (state.settings.defaultModel === m.name ? `<span class="badge">default</span>` : "");
+      const badges = document.createElement("div"); badges.className = "badges";
+      const kind = archKind(m.name);
+      badges.innerHTML = [
+        det.parameter_size && `<span class="badge size">${esc(det.parameter_size)}</span>`,
+        det.quantization_level && `<span class="badge size">${esc(det.quantization_level)}</span>`,
+        kind && `<span class="badge">${esc(kind)}</span>`,
+        Number(det.context_length) > 0 && `<span class="badge size">${esc(fmtCtx(Number(det.context_length)))} ctx</span>`,
+        Number(m.size) > 0 && `<span class="badge size">${esc(fmtBytes(Number(m.size)))}</span>`,
+        capBadges(m.capabilities)
+      ].filter(Boolean).join("");
+      body.append(nm, badges);
+      // No Load/Eject here on purpose: residency is a chat concern and the topbar already
+      // owns it. This tab is about what you have, not what is in memory right now.
+      const acts = document.createElement("div"); acts.className = "iacts";
+      if (updateAvailable(m.name)) acts.appendChild(mkBtn("Update", "", () => startPull(m.name)));
+      acts.appendChild(mkBtn(openDetails[m.name] ? "Hide details" : "Details", "", () => {
+        openDetails[m.name] = !openDetails[m.name]; renderModels();
+      }));
+      acts.appendChild(mkBtn("Delete", "danger", () => deleteModel(m)));
+      row.append(body, acts);
+      if (isPulling(m.name)) row.appendChild(progressEl(m.name));
+      if (openDetails[m.name]) {
+        const d = document.createElement("div"); d.className = "idetails on";
+        const cell = (k, v) => v ? `<div><b>${esc(k)}</b><br><span>${esc(String(v))}</span></div>` : "";
+        d.innerHTML = [
+          cell("Family", det.family),
+          cell("Parameters", det.parameter_size),
+          cell("Quantization", det.quantization_level),
+          cell("Architecture", kind),
+          cell("Context window", Number(det.context_length) > 0 ? Number(det.context_length).toLocaleString() + " tokens" : ""),
+          cell("Disk size", Number(m.size) > 0 ? fmtBytes(Number(m.size)) : ""),
+          cell("Capabilities", (m.capabilities || []).join(", ")),
+          cell("Format", det.format),
+          cell("Digest", (m.digest || "").slice(0, 12)),
+          cell("Modified", m.modified_at ? new Date(m.modified_at).toLocaleString() : ""),
+          cell("Max image", meta.imgMax ? mpText(meta.imgMax) + " MP" : "")
+        ].filter(Boolean).join("");
+        row.appendChild(d);
+      }
+      return row;
+    }
+    async function deleteModel(m) {
+      const size = Number(m.size) > 0 ? ` and free ${fmtBytes(Number(m.size))}` : "";
+      const choice = await dialog("Delete model",
+        `Delete <b>${esc(m.name)}</b>${size}?<br><br>Chats that used it are kept, but they cannot be continued until it is downloaded again.`,
+        [CANCEL_BTN, { label: "Delete", value: "del", primary: true }]);
+      if (choice !== "del") return;
+      try {
+        const r = await oreq("/api/delete", { method: "DELETE", body: { model: m.name } });
+        if (!r.ok) throw new Error("HTTP " + r.status + " " + r.body.slice(0, 180));
+      } catch (e) {
+        await dialog("Could not delete", esc(String((e && e.message) || e)),
+          [{ label: "OK", value: "ok", cancel: true, primary: true }]);
+        return;
+      }
+      delete metaAll()[m.name];
+      await loadModels();
+      renderModels();
+    }
+    /* ---- the library, as one flat list ----
+       Filtering and sorting run over rows, never over models, so what you search is what you
+       can download. Size sorting and the size filter act on what the tags pages have reported
+       so far; rows still waiting sort last and are excluded from a size filter rather than
+       guessed at. */
+    /* Buckets are parameter counts, not download sizes.
+       Download size now costs a request per model and is fetched only when a row is opened,
+       so filtering by it would silently omit everything not yet expanded. Parameter size
+       comes free with the listing, is known for every row, and is what people mean when they
+       ask whether a model will run on their machine. */
+    const SIZE_BUCKETS = [
+      ["sm", "Under 4B", n => n > 0 && n < 4],
+      ["md", "4 to 15B", n => n >= 4 && n <= 15],
+      ["lg", "Over 15B", n => n > 15],
+    ];
+    const UPDATED_BUCKETS = [
+      ["w", "Past week", a => a <= 7],
+      ["m", "Past month", a => a <= 30],
+      ["y", "Past year", a => a <= 365],
+    ];
+    /* Search rank, not just a yes/no.
+
+       0 = every word is in the model name or size, 1 = the description had to help, -1 = no
+       match. The distinction matters because llama3.2's description mentions "3B", so a search
+       for "llama3.2 3b" would otherwise rank the 1B row alongside the 3B one. Description
+       matches are still worth keeping (they are how you find a model by what it does), they
+       just belong below the thing you actually named. */
+    function queryRank(m, q) {
+      if (!q) return 0;
+      const words = q.split(/[\s\-]+/).filter(Boolean);
+      if (!words.length) return 0;
+      // Size badges are part of the identity, so "qwen3.6 35b" still finds the model whose
+      // listing advertises a 35b build even though rows are now per model.
+      const id = `${m.name} ${(m.sizes || []).join(" ")}`.toLowerCase();
+      if (words.every(t => id.includes(t))) return 0;
+      const all = `${id} ${(m.desc || "").toLowerCase()}`;
+      return words.every(t => all.includes(t)) ? 1 : -1;
+    }
+    function libraryRows() {
+      const q = mpQuery.toLowerCase().trim();
+      const pick = (list, key) => list.find(b => b[0] === key);
+      const sizeB = mpSize && pick(SIZE_BUCKETS, mpSize);
+      const updB = mpUpdated && pick(UPDATED_BUCKETS, mpUpdated);
+      let items = activeCatalog()
+        .map(m => ({ m, rank: queryRank(m, q) }))
+        .filter(({ m, rank }) => rank >= 0
+          && (!mpFilter || (m.caps || []).includes(mpFilter))
+          && (!mpSource || (mpSource === "community") === !!m.community)
+          && (!mpRuns || (mpRuns === "cloud") === isCloudModel(m))
+          && (!sizeB || sizeB[2](modelParams(m)))
+          && (!updB || updB[2](m.age)));
+      const by = {
+        popular: null,                                     // catalog order is already popularity
+        newest: (a, b) => (a.age - b.age) || a.name.localeCompare(b.name),
+        name: (a, b) => a.name.localeCompare(b.name),
+        size: (a, b) => modelParams(a) - modelParams(b),
+      }[mpSort];
+      // Rank is the primary key whenever there is a query, so what you typed always outranks
+      // the chosen ordering. Sort is stable, so "Popular" with no query keeps catalog order.
+      items.sort((a, b) => (a.rank - b.rank) || (by ? by(a.m, b.m) : 0));
+      return items.map(x => x.m);
+    }
+    let libBatch = 40, libObserver = null;
+    function renderLibrary(body) {
+      if (catalogErr && !catalog) {
+        return emptyBox(body, "Couldn't load the model catalog.",
+          esc(catalogErr) + "<br>Your installed models are unaffected.", "Try again", () => fetchCatalog(true));
+      }
+      if (!catalog) return emptyBox(body, "Loading the model library…");
+      const q = mpQuery.trim().toLowerCase();
+      const search = q ? searchCache[q] : null;
+      const rows = libraryRows();
+      if (!rows.length) {
+        if (search && search.loading) return emptyBox(body, "Searching ollama.com…");
+        if (q && !search) return emptyBox(body, "Searching ollama.com…");
+        return emptyBox(body, "Nothing matches that.",
+          search && search.error ? esc(search.error) : "");
+      }
+      // Only ever says "more are coming" while that is actually true.
+      if (search && search.loading) {
+        const note = document.createElement("div");
+        note.className = "mp-note";
+        note.textContent = search.pages ? "Loading more results…" : "Searching ollama.com…";
+        body.appendChild(note);
+      }
+      const list = document.createElement("div"); list.id = "libList";
+      body.appendChild(list);
+      appendLibraryRows(list, rows.slice(0, libBatch));
+      /* One sentinel drives both kinds of "more": another slice of rows we already hold, and
+         the next page of results from ollama.com. It has to exist while EITHER is possible, or
+         reaching the end of page one would leave nothing to trigger page two. */
+      const more = rows.length > libBatch, remote = searchHasMore();
+      if (more || remote) {
+        const sentinel = document.createElement("div");
+        sentinel.style.cssText = "height:1px";
+        body.appendChild(sentinel);
+        if (libObserver) libObserver.disconnect();
+        libObserver = new IntersectionObserver(es => {
+          if (!es.some(e => e.isIntersecting)) return;
+          if (rows.length > libBatch) { libBatch += 40; renderModels(); return; }
+          if (searchHasMore()) loadMoreSearch(mpQuery.trim());
+        }, { root: $("#mpBody"), rootMargin: "300px" });
+        libObserver.observe(sentinel);
+      }
+    }
+    /* One row per model, opening to reveal every version it has.
+
+       Rows used to be one per advertised size, which duplicated a model across several rows
+       that all expanded to the same thing, and offered no way at all to reach a quantization.
+       A model is the thing you browse; a tag is the thing you download. */
+    let expandedModels = Object.create(null), expandedQuant = Object.create(null);
+    function toggleModel(name) {
+      expandedModels[name] = !expandedModels[name];
+      if (expandedModels[name]) loadTagsFor(name);
+      renderModels();
+    }
+    function appendLibraryRows(list, models) {
+      const installed = new Set(modelCache.map(m => m.name.toLowerCase()));
+      for (const m of models) list.appendChild(modelRow(m, installed));
+    }
+    function modelRow(m, installed) {
+      const open = !!expandedModels[m.name];
+      const el = document.createElement("div");
+      el.className = "vrow mrow" + (open ? " open" : "");
+      const head = document.createElement("div"); head.className = "mhead";
+      const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = open ? "▾" : "▸";
+      const nm = document.createElement("div"); nm.className = "vname"; nm.textContent = m.name;
+      const sub = document.createElement("div"); sub.className = "vsub"; sub.textContent = m.desc || "";
+      const left = document.createElement("div"); left.className = "vleft"; left.append(nm, sub);
+      const badges = document.createElement("div"); badges.className = "badges";
+      const ago = agoText(m.age);
+      badges.innerHTML = [
+        ...(m.sizes || []).slice(0, 4).map(s => `<span class="badge size">${esc(s.toUpperCase())}</span>`),
+        capBadges((m.caps || []).filter(c => c !== "cloud")),
+        isCloudModel(m) ? `<span class="badge cloud">cloud</span>` : "",
+        `<span class="badge">${m.community ? "community" : "official"}</span>`,
+        m.pulls ? `<span class="badge">${esc(m.pulls)} pulls</span>` : "",
+        ago ? `<span class="badge">${esc(ago)}</span>` : ""
+      ].filter(Boolean).join("");
+      head.append(chev, left, badges);
+      head.onclick = () => toggleModel(m.name);
+      el.appendChild(head);
+      if (open) el.appendChild(modelDetail(m, installed));
+      return el;
+    }
+    // Tags split three ways: plain sizes, quantizations, and cloud. Which group a model
+    // actually has varies wildly. llama3.2 is nearly all quantizations behind two sizes,
+    // while a community upload is often nothing but quantizations.
+    function modelDetail(m, installed) {
+      const box = document.createElement("div"); box.className = "mdetail";
+      const tags = variantCache[m.name];
+      if (!tags) { box.innerHTML = `<div class="mp-note">Loading versions…</div>`; return box; }
+      if (tags.error) {
+        box.innerHTML = `<div class="mp-note">Couldn't load versions. ${esc(tags.error)}</div>`;
+        return box;
+      }
+      if (!tags.length) { box.innerHTML = `<div class="mp-note">No versions listed.</div>`; return box; }
+      const cloud = tags.filter(t => CLOUD_TAG.test(t.tag));
+      const sizes = tags.filter(t => PRIMARY_TAG.test(t.tag) && !CLOUD_TAG.test(t.tag));
+      const quant = tags.filter(t => !cloud.includes(t) && !sizes.includes(t));
+      if (sizes.length) box.appendChild(tagGroup("Sizes", sizes, m, installed, false));
+      if (quant.length) {
+        // Only worth hiding when there is something else to show first.
+        box.appendChild(tagGroup(sizes.length ? "Quantizations" : "Versions", quant, m, installed, sizes.length > 0));
+      }
+      if (cloud.length) box.appendChild(tagGroup("Cloud", cloud, m, installed, false, true));
+      return box;
+    }
+    function tagGroup(title, tags, m, installed, collapsible, isCloud) {
+      const g = document.createElement("div"); g.className = "tgroup";
+      const h = document.createElement("div"); h.className = "tgh";
+      h.textContent = `${title} (${tags.length})`;
+      g.appendChild(h);
+      if (isCloud) {
+        const n = document.createElement("div"); n.className = "mp-note";
+        n.textContent = "These run on Ollama's servers and need an Ollama account, so they can't be downloaded here.";
+        g.appendChild(n);
+      }
+      const showAll = !collapsible || expandedQuant[m.name];
+      for (const t of (showAll ? tags : tags.slice(0, 3))) g.appendChild(tagRow(t, installed, isCloud));
+      if (collapsible && !showAll && tags.length > 3) {
+        g.appendChild(mkBtn(`Show all ${tags.length}`, "", () => { expandedQuant[m.name] = true; renderModels(); }));
+      }
+      return g;
+    }
+    function tagRow(t, installed, isCloud) {
+      const have = installed.has(t.name.toLowerCase());
+      const row = document.createElement("div"); row.className = "trow" + (have ? " have" : "");
+      const nm = document.createElement("div"); nm.className = "tname"; nm.textContent = t.name;
+      const facts = document.createElement("div"); facts.className = "badges";
+      const reg = regCache[t.name];
+      facts.innerHTML = [
+        (reg && reg.bytes) ? `<span class="badge size">${esc(fmtBytes(reg.bytes))}</span>`
+          : (t.size ? `<span class="badge size">${esc(t.size)}</span>` : ""),
+        (reg && reg.quant) ? `<span class="badge size">${esc(reg.quant)}</span>` : "",
+        t.ctx ? `<span class="badge size">${esc(t.ctx)} ctx</span>` : "",
+        have ? `<span class="badge cap">installed</span>` : ""
+      ].filter(Boolean).join("");
+      row.append(nm, facts);
+      const acts = document.createElement("div"); acts.className = "iacts";
+      if (isCloud) {
+        const n = document.createElement("span"); n.className = "tcloud"; n.textContent = "cloud only";
+        acts.appendChild(n);
+      } else if (isPulling(t.name)) {
+        acts.append(...pullButtons(t.name));
+      } else {
+        // No confirm step: the exact size and quantization are already on this row.
+        acts.appendChild(mkBtn(have ? "Re-download" : "Download", have ? "" : "primary", () => startPull(t.name)));
+      }
+      row.appendChild(acts);
+      if (isPulling(t.name)) row.appendChild(progressEl(t.name));
+      return row;
+    }
+    /* Tag data is fetched only when a row is opened, never while browsing. One request per
+       model you actually look at, rather than one per model you scroll past. */
+    async function loadTagsFor(name) {
+      if (!variantCache[name]) {
+        try { await fetchVariants(name); }
+        catch (e) { variantCache[name] = { error: String((e && e.message) || e) }; }
+        if (modelsOpen) renderModels();
+      }
+      enrichSizeTags(name);
+    }
+    /* Exact bytes and quantization, for plain size tags only.
+       A quantization tag already spells its format out in its name, and a model can carry
+       sixty of them, so asking the registry about each would be a lot of requests to learn
+       something already written down. */
+    async function enrichSizeTags(name) {
+      const tags = variantCache[name];
+      if (!tags || tags.error) return;
+      const want = tags
+        .filter(t => PRIMARY_TAG.test(t.tag) && !CLOUD_TAG.test(t.tag) && !regCache[t.name])
+        .slice(0, 6);
+      for (const t of want) {
+        try { await registryInfo(t.name); } catch { }
+        if (modelsOpen && expandedModels[name]) renderModels();
+      }
+    }
+    $("#navModels").addEventListener("click", () => modelsOpen ? closeModels() : openModels());
+    $("#getModelBtn").addEventListener("click", () => { if (!modelsOpen) openModels(); });
+    $("#tabInstalled").addEventListener("click", () => setTab("installed"));
+    $("#tabLibrary").addEventListener("click", () => setTab("library"));
+    $("#mpSearch").addEventListener("input", e => {
+      mpQuery = e.target.value.trim();
+      libBatch = 40;                 // a new query starts from the top
+      renderModels();
+      if (mpTab === "library") scheduleSearch();
+    });
+    $("#dlPill").addEventListener("click", () => { if (!modelsOpen) openModels(); });
+    // Chat is the app's front door: anything that puts you back in a conversation closes the
+    // Models page rather than leaving it stranded behind the chat you just picked.
+    els.newChat.addEventListener("click", closeModels);
+    els.convList.addEventListener("click", closeModels);
+
     /* ============ boot ============ */
     async function boot() {
       // A window with no session is a genuinely fresh open, so it starts on an empty chat.
@@ -6099,11 +8213,16 @@
       openConversation();
       settleDefaultModel();
       if (fresh) applyDefaultModel(currentConv());
+      renderPullUI();                // a download left pending from last time shows straight away
+      syncClosePolicy();             // before anything can be closed
       safeFocusInput();
 
       // Background non-blocking network initialization
       connectLauncher();             // not awaited: the terminal should see us immediately
       (async () => {
+        // Ahead of loadModels(), so a stopped Ollama is started rather than reported offline.
+        // Returns immediately in the common case where the server is already answering.
+        await bootstrapOllama();
         await loadModels();
         settleDefaultModel();
         if (fresh) applyDefaultModel(currentConv());
